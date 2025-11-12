@@ -79,6 +79,11 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
 
 def get_db():
     """Dependency für DB Session"""
+    if db_engine is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Datenbank nicht verfügbar. Bitte prüfe DATABASE_URL Environment Variable."
+        )
     db = get_session(db_engine)
     try:
         yield db

@@ -1572,7 +1572,10 @@ async def create_scheduled_message(
     db.refresh(scheduled_msg)
     
     # Plane die Nachricht
-    await scheduler_service.schedule_message(scheduled_msg)
+    if scheduler_service:
+        await scheduler_service.schedule_message(scheduled_msg)
+    else:
+        raise HTTPException(status_code=503, detail="Scheduler Service nicht verfügbar")
     
     return {
         "id": scheduled_msg.id,
@@ -1669,7 +1672,10 @@ async def update_scheduled_message(
         raise HTTPException(status_code=400, detail="Nur pending Nachrichten können bearbeitet werden")
     
     # Alten Job entfernen
-    scheduler_service.cancel_message(message_id)
+    if scheduler_service:
+        scheduler_service.cancel_message(message_id)
+    else:
+        raise HTTPException(status_code=503, detail="Scheduler Service nicht verfügbar")
     
     # Felder aktualisieren
     if update.message is not None:
@@ -1707,7 +1713,10 @@ async def cancel_scheduled_message(message_id: int, db: Session = Depends(get_db
     if not msg:
         raise HTTPException(status_code=404, detail="Nachricht nicht gefunden")
     
-    scheduler_service.cancel_message(message_id)
+    if scheduler_service:
+        scheduler_service.cancel_message(message_id)
+    else:
+        raise HTTPException(status_code=503, detail="Scheduler Service nicht verfügbar")
     
     return {"success": True}
 
@@ -2134,9 +2143,15 @@ async def update_warming_config(
     if config.is_active is not None:
         warming.is_active = config.is_active
         if config.is_active:
-            await warming_service.start_warming(warming.id)
+            if warming_service:
+                await warming_service.start_warming(warming.id)
+            else:
+                raise HTTPException(status_code=503, detail="Warming Service nicht verfügbar")
         else:
-            await warming_service.stop_warming(warming.id)
+            if warming_service:
+                await warming_service.stop_warming(warming.id)
+            else:
+                raise HTTPException(status_code=503, detail="Warming Service nicht verfügbar")
     
     if config.read_messages_per_day is not None:
         warming.read_messages_per_day = config.read_messages_per_day
