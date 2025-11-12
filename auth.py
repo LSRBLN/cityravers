@@ -18,7 +18,12 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 # Initialisiere DB-Engine für get_db Dependency
-db_engine = init_db()
+# Mit Fehlerbehandlung für Serverless-Umgebungen
+try:
+    db_engine = init_db()
+except Exception as e:
+    logger.error(f"Fehler bei DB-Initialisierung in auth.py: {e}")
+    db_engine = None
 
 # JWT Konfiguration
 import os
