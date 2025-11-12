@@ -1,0 +1,69 @@
+# Vercel ignore file
+# Dateien die nicht deployed werden sollen
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+
+# Sessions und Uploads
+sessions/
+uploads/
+*.session
+*.json
+
+# Logs
+*.log
+backend.log
+server.log
+frontend.log
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Tests
+tests/
+*.test.py
+pytest.ini
+requirements-test.txt
+
+# Backups
+backups/
+*.tar.gz
+*.zip
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Reports
+TEST_*.md
+*.md
+!README.md
+!VERCEL_DEPLOY.md
+
+# Images (außer Logo)
+*.jpeg
+*.jpg
+*.png
+!frontend/public/logo.png
+
