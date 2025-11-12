@@ -2,8 +2,7 @@ import React, { useState } from 'react'
 import axios from 'axios'
 import { format } from 'date-fns'
 import MessageTemplates from './MessageTemplates'
-
-const API_BASE = '/api'
+import { API_BASE } from '../config/api'
 
 export default function ScheduledMessages({ scheduledMessages, accounts, groups, onUpdate }) {
   const [showModal, setShowModal] = useState(false)

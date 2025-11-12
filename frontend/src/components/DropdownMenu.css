@@ -1,0 +1,208 @@
+.dropdown-menu-container {
+  position: relative;
+  display: inline-block;
+  width: 100%;
+  max-width: 300px;
+}
+
+.dropdown-menu-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  width: 100%;
+  padding: var(--spacing-md) var(--spacing-lg);
+  background: white;
+  border: 2px solid var(--gray-300);
+  border-radius: var(--radius-md);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--gray-700);
+  cursor: pointer;
+  transition: all var(--transition-base);
+  box-shadow: var(--shadow-sm);
+}
+
+.dropdown-menu-trigger:hover {
+  border-color: var(--primary-500);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+
+.dropdown-menu-trigger:active {
+  transform: translateY(0);
+}
+
+.dropdown-menu-icon {
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.dropdown-menu-label {
+  flex: 1;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dropdown-menu-arrow {
+  font-size: 0.75rem;
+  transition: transform var(--transition-base);
+  color: var(--gray-500);
+}
+
+.dropdown-menu-arrow.open {
+  transform: rotate(180deg);
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: calc(100% + var(--spacing-xs));
+  left: 0;
+  right: 0;
+  background: white;
+  border: 2px solid var(--gray-200);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-xl);
+  z-index: 1000;
+  max-height: 500px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  animation: slideDown var(--transition-base);
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.dropdown-menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  width: 100%;
+  padding: var(--spacing-md) var(--spacing-lg);
+  background: none;
+  border: none;
+  text-align: left;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--gray-700);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  border-bottom: 1px solid var(--gray-100);
+}
+
+.dropdown-menu-item:last-child {
+  border-bottom: none;
+}
+
+.dropdown-menu-item:hover {
+  background: var(--primary-50);
+  color: var(--primary-700);
+}
+
+.dropdown-menu-item.active {
+  background: linear-gradient(90deg, var(--primary-50) 0%, transparent 100%);
+  color: var(--primary-600);
+  font-weight: 600;
+  border-left: 4px solid var(--primary-500);
+}
+
+.dropdown-menu-item.highlight {
+  background: linear-gradient(90deg, #fff3cd 0%, transparent 100%);
+  color: #856404;
+  font-weight: 700;
+}
+
+.dropdown-menu-item.highlight:hover {
+  background: linear-gradient(90deg, #ffe69c 0%, transparent 100%);
+}
+
+.dropdown-menu-item-icon {
+  font-size: 1.125rem;
+  width: 24px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.dropdown-menu-item-label {
+  flex: 1;
+}
+
+.dropdown-menu-item-check {
+  color: var(--primary-600);
+  font-weight: bold;
+  font-size: 1.125rem;
+}
+
+/* Mobile Styles */
+@media (max-width: 767px) {
+  .dropdown-menu-container {
+    max-width: 100%;
+  }
+
+  .dropdown-menu {
+    position: fixed;
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    max-height: 80vh;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    border-left: none;
+    border-right: none;
+    border-bottom: none;
+    animation: slideUp var(--transition-base);
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15);
+  }
+
+  @keyframes slideUp {
+    from {
+      opacity: 0;
+      transform: translateY(100%);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .dropdown-menu-item {
+    padding: var(--spacing-lg);
+    font-size: 1rem;
+    min-height: 56px;
+  }
+
+}
+
+.dropdown-menu-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 999;
+  animation: fadeIn var(--transition-base);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Tablet Styles */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .dropdown-menu-container {
+    max-width: 250px;
+  }
+}
+

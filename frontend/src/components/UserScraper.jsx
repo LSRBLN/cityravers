@@ -1,7 +1,6 @@
 import React, { useState } from 'react'
 import axios from 'axios'
-
-const API_BASE = '/api'
+import { API_BASE } from '../config/api'
 
 export default function UserScraper({ accounts, groups, onUpdate }) {
   const [scrapedUsers, setScrapedUsers] = useState([])

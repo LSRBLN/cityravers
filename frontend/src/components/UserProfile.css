@@ -165,3 +165,102 @@
   box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
 }
 
+/* Mobile Responsive Styles */
+@media (max-width: 767px) {
+  .user-profile {
+    width: 100%;
+    padding: 20px 15px;
+    margin-bottom: 15px;
+  }
+
+  .profile-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 15px;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+  }
+
+  .profile-info h3 {
+    font-size: 1.25rem;
+    margin-bottom: 5px;
+  }
+
+  .profile-info p {
+    font-size: 0.85rem;
+    margin: 2px 0;
+  }
+
+  .btn-secondary {
+    width: 100%;
+    padding: 12px;
+    font-size: 0.95rem;
+    min-height: 44px;
+    touch-action: manipulation;
+  }
+
+  .profile-content {
+    gap: 20px;
+  }
+
+  .profile-section h4 {
+    font-size: 1.1rem;
+    margin-bottom: 12px;
+  }
+
+  .subscription-card {
+    padding: 15px;
+  }
+
+  .subscription-plan strong {
+    font-size: 1.1rem;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 15px;
+  }
+
+  .stat-item {
+    padding: 15px;
+  }
+
+  .stat-value {
+    font-size: 2rem;
+  }
+
+  .stat-label {
+    font-size: 0.85rem;
+  }
+
+  .upgrade-banner {
+    padding: 20px 15px;
+  }
+
+  .upgrade-banner h4 {
+    font-size: 1.1rem;
+  }
+
+  .upgrade-banner p {
+    font-size: 0.9rem;
+  }
+
+  .upgrade-banner .btn-primary {
+    width: 100%;
+    min-height: 44px;
+    touch-action: manipulation;
+  }
+}
+
+/* Tablet Styles */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .user-profile {
+    padding: 25px;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 18px;
+  }
+}
+

@@ -1,9 +1,8 @@
 import React, { createContext, useState, useContext, useEffect } from 'react'
 import axios from 'axios'
+import { API_BASE } from '../config/api'
 
 const AuthContext = createContext(null)
-
-const API_BASE = '/api'
 
 // Axios Request Interceptor - fügt Token automatisch hinzu
 // Wird beim Import registriert (nur einmal)

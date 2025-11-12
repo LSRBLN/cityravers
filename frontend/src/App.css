@@ -1,29 +1,207 @@
-.tabs {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 30px;
-  border-bottom: 2px solid #e0e0e0;
+/* Alte Tab-Styles entfernt - jetzt Dropdown-Menü */
+
+/* Mobile Styles - Dropdown-Menü wird in DropdownMenu.css behandelt */
+
+.container.mobile .professional-header .header-content {
+  flex-direction: column;
+  gap: 15px;
 }
 
-.tab {
-  padding: 15px 30px;
-  background: none;
-  border: none;
-  border-bottom: 3px solid transparent;
+.container.mobile .professional-header h1 {
+  font-size: 1.5rem;
+}
+
+.container.mobile .professional-header .header-title img {
+  height: 36px !important;
+}
+
+.container.mobile .professional-header p {
   font-size: 1rem;
-  font-weight: 600;
-  color: #666;
-  cursor: pointer;
-  transition: all 0.3s;
 }
 
-.tab:hover {
-  color: #667eea;
-  background: #f8f9fa;
+.professional-header .header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--spacing-lg);
 }
 
-.tab.active {
-  color: #667eea;
-  border-bottom-color: #667eea;
+.professional-header .header-title {
+  flex: 1;
 }
 
+.professional-header .header-title h1 {
+  font-size: 2.5rem;
+  font-weight: 700;
+  margin: 0;
+  line-height: 1.2;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  color: white;
+}
+
+.professional-header .header-title p {
+  font-size: 1.125rem;
+  opacity: 0.95;
+  margin: 0;
+  font-weight: 400;
+}
+
+/* Tablet Styles - Dropdown-Menü wird in DropdownMenu.css behandelt */
+
+/* Responsive Container */
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.container.mobile {
+  padding: 10px;
+  max-width: 100%;
+}
+
+.container.tablet {
+  padding: 15px;
+  max-width: 100%;
+}
+
+/* Responsive Header */
+.header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 30px;
+  border-radius: 10px;
+  margin-bottom: 30px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.header-title {
+  flex: 1;
+}
+
+.header h1 {
+  font-size: 2rem;
+  margin-bottom: 10px;
+}
+
+.header .warning {
+  background: rgba(255, 255, 255, 0.2);
+  padding: 10px;
+  border-radius: 5px;
+  margin-top: 15px;
+  font-size: 0.9rem;
+}
+
+/* Mobile Header Adjustments */
+@media (max-width: 767px) {
+  .mobile-menu-toggle {
+    display: block;
+  }
+
+  .header {
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+
+  .header h1 {
+    font-size: 1.5rem;
+    margin-bottom: 5px;
+  }
+
+  .header .warning {
+    font-size: 0.85rem;
+    padding: 8px;
+  }
+
+  .container.mobile {
+    padding-top: 80px;
+  }
+}
+
+/* Tablet Adjustments */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .header h1 {
+    font-size: 1.75rem;
+  }
+
+  .tabs {
+    gap: 8px;
+  }
+
+  .tab {
+    padding: 12px 20px;
+    font-size: 0.95rem;
+  }
+}
+
+/* Desktop Enhancements - Dropdown-Menü wird in DropdownMenu.css behandelt */
+
+/* Touch-friendly buttons on mobile */
+@media (max-width: 767px) {
+  .btn {
+    min-height: 44px;
+    padding: 12px 20px;
+    font-size: 1rem;
+    touch-action: manipulation; /* Prevents double-tap zoom */
+  }
+}
+
+/* Responsive Cards */
+@media (max-width: 767px) {
+  .card {
+    padding: 15px;
+    margin-bottom: 15px;
+  }
+
+  .card h2 {
+    font-size: 1.25rem;
+  }
+}
+
+/* Responsive Forms */
+@media (max-width: 767px) {
+  .form-row {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .form-group input,
+  .form-group select,
+  .form-group textarea {
+    font-size: 16px; /* Prevents zoom on iOS */
+  }
+}
+
+/* Responsive Tables */
+@media (max-width: 767px) {
+  .table {
+    font-size: 0.9rem;
+  }
+
+  .table th,
+  .table td {
+    padding: 8px;
+  }
+
+  /* Make tables scrollable on mobile */
+  .table-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* Responsive Modals */
+@media (max-width: 767px) {
+  .modal-content {
+    width: 95%;
+    padding: 20px;
+    max-height: 85vh;
+  }
+}

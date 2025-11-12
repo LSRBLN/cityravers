@@ -1,0 +1,20 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+# SPA-Routing: Alle Routes zu index.html
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Proxy für API-Calls (optional - wenn Backend auf anderer Domain)
+# [[redirects]]
+#   from = "/api/*"
+#   to = "https://deine-api-domain.com/api/:splat"
+#   status = 200
+#   force = true
+
+[build.environment]
+  NODE_VERSION = "18"
+

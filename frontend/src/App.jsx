@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react'
 import axios from 'axios'
 import { useAuth } from './contexts/AuthContext'
+import { useDevice } from './hooks/useDevice'
 import Login from './components/Login'
 import UserProfile from './components/UserProfile'
+import DropdownMenu from './components/DropdownMenu'
 import AccountManager from './components/AccountManager'
 import GroupManager from './components/GroupManager'
 import ScheduledMessages from './components/ScheduledMessages'
@@ -16,10 +18,11 @@ import SubscriptionPlans from './components/SubscriptionPlans'
 import AdminDashboard from './components/AdminDashboard'
 import './App.css'
 
-const API_BASE = '/api'
+import { API_BASE } from './config/api'
 
 function App() {
   const { isAuthenticated, loading: authLoading, user } = useAuth()
+  const { isMobile, isTablet, isDesktop } = useDevice()
   const [activeTab, setActiveTab] = useState('accounts')
   const isAdmin = user?.is_admin || false
   const [accounts, setAccounts] = useState([])
@@ -128,91 +131,60 @@ function App() {
   }
 
   return (
-    <div className="container">
-      <div className="header">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-          <div>
-            <h1>🎵 Berlin City Raver - Marketing Tool</h1>
-            <p>Verwaltung für Accountauswahl, Gruppenauswahl und Zeitplanung</p>
+    <div className={`container ${isMobile ? 'mobile' : ''} ${isTablet ? 'tablet' : ''}`}>
+      <div className="professional-header">
+        <div className="professional-header-content">
+          <div className={`header-content ${isMobile ? 'mobile' : ''}`}>
+            <div className="header-title">
+              <h1 style={{ margin: 0 }}>Berlin City Raver - Marketing Tool</h1>
+              {!isMobile && <p>Verwaltung für Accountauswahl, Gruppenauswahl und Zeitplanung</p>}
+              {/* Logo unter dem Tool-Namen */}
+              <div style={{ 
+                marginTop: 'var(--spacing-md)',
+                display: 'flex',
+                justifyContent: 'flex-start',
+                alignItems: 'center'
+              }}>
+                <img 
+                  src="/logo.png" 
+                  alt="Berlin City Raver Logo" 
+                  style={{ 
+                    height: isMobile ? '288px' : '384px',
+                    width: 'auto',
+                    borderRadius: 'var(--radius-md)',
+                    boxShadow: 'var(--shadow-lg)',
+                    background: 'rgba(255, 255, 255, 0.95)',
+                    padding: '8px',
+                    display: 'block'
+                  }}
+                  onError={(e) => {
+                    e.target.style.display = 'none'
+                  }}
+                />
+              </div>
+            </div>
+            <UserProfile />
           </div>
-          <UserProfile />
-        </div>
-        <div className="warning">
-          ⚠️ <strong>Warnung:</strong> Spam verstößt gegen Telegram Nutzungsbedingungen. 
-          Nur für legitime Zwecke verwenden. Kann zu Account-Sperrungen führen.
         </div>
       </div>
 
-      <div className="tabs">
-        <button
-          className={`tab ${activeTab === 'accounts' ? 'active' : ''}`}
-          onClick={() => setActiveTab('accounts')}
-        >
-          👤 Accounts
-        </button>
-        <button
-          className={`tab ${activeTab === 'groups' ? 'active' : ''}`}
-          onClick={() => setActiveTab('groups')}
-        >
-          👥 Gruppen
-        </button>
-        <button
-          className={`tab ${activeTab === 'messages' ? 'active' : ''}`}
-          onClick={() => setActiveTab('messages')}
-        >
-          📅 Geplante Nachrichten
-        </button>
-        <button
-          className={`tab ${activeTab === 'scraper' ? 'active' : ''}`}
-          onClick={() => setActiveTab('scraper')}
-        >
-          👥 User-Scraping
-        </button>
-        <button
-          className={`tab ${activeTab === 'forwarder' ? 'active' : ''}`}
-          onClick={() => setActiveTab('forwarder')}
-        >
-          📤 Weiterleiten
-        </button>
-        <button
-          className={`tab ${activeTab === 'warmer' ? 'active' : ''}`}
-          onClick={() => setActiveTab('warmer')}
-        >
-          🔥 Account-Warmer
-        </button>
-        <button
-          className={`tab ${activeTab === 'templates' ? 'active' : ''}`}
-          onClick={() => setActiveTab('templates')}
-        >
-          📝 Vorlagen
-        </button>
-        <button
-          className={`tab ${activeTab === 'proxies' ? 'active' : ''}`}
-          onClick={() => setActiveTab('proxies')}
-        >
-          🔒 Proxies
-        </button>
-        <button
-          className={`tab ${activeTab === 'account-to-groups' ? 'active' : ''}`}
-          onClick={() => setActiveTab('account-to-groups')}
-        >
-          👤→👥 Account zu Gruppen
-        </button>
-        <button
-          className={`tab ${activeTab === 'subscriptions' ? 'active' : ''}`}
-          onClick={() => setActiveTab('subscriptions')}
-        >
-          📦 Pakete
-        </button>
-        {isAdmin && (
-          <button
-            className={`tab ${activeTab === 'admin' ? 'active' : ''}`}
-            onClick={() => setActiveTab('admin')}
-            style={{ background: '#ffc107', color: '#333', fontWeight: 'bold' }}
-          >
-            🔐 Admin Console
-          </button>
-        )}
+      <div className="warning-banner-modern">
+        <svg fill="currentColor" viewBox="0 0 20 20">
+          <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+        </svg>
+        <div>
+          <strong>Warnung:</strong> Spam verstößt gegen Telegram Nutzungsbedingungen. 
+          Vorsichtig verwenden. Kann zu Account-Sperrungen führen.
+        </div>
+      </div>
+
+      {/* Dropdown Menu */}
+      <div style={{ marginBottom: 'var(--spacing-2xl)' }}>
+        <DropdownMenu 
+          activeTab={activeTab} 
+          setActiveTab={setActiveTab} 
+          isAdmin={isAdmin}
+        />
       </div>
 
       {activeTab === 'accounts' && (
@@ -304,6 +276,32 @@ function App() {
       {activeTab === 'admin' && isAdmin && (
         <AdminDashboard />
       )}
+
+      {/* Copyright Footer */}
+      <div style={{
+        marginTop: 'var(--spacing-3xl)',
+        padding: 'var(--spacing-lg)',
+        textAlign: 'center',
+        color: 'var(--gray-600)',
+        fontSize: '0.875rem',
+        borderTop: '1px solid var(--gray-200)'
+      }}>
+        <p style={{ margin: 0 }}>
+          Programmiert von der{' '}
+          <a 
+            href="https://www.phnxvision.de" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            style={{
+              color: 'var(--primary-600)',
+              textDecoration: 'none',
+              fontWeight: 600
+            }}
+          >
+            PhnxVision Marketing Agentur
+          </a>
+        </p>
+      </div>
     </div>
   )
 }

@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import axios from 'axios'
-
-const API_BASE = '/api'
+import { API_BASE } from '../config/api'
 
 export default function AccountWarmer({ accounts, onUpdate }) {
   const [warmings, setWarmings] = useState([])

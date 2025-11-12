@@ -27,74 +27,69 @@ export default function UserProfile() {
   }
 
   return (
-    <div className="user-profile">
-      <div className="profile-header">
-        <div className="profile-info">
-          <h3>👤 {user.username}</h3>
-          <p>{user.email}</p>
+    <div style={{ 
+      background: 'rgba(255, 255, 255, 0.15)', 
+      backdropFilter: 'blur(10px)',
+      borderRadius: 'var(--radius-lg)',
+      padding: 'var(--spacing-lg)',
+      border: '1px solid rgba(255, 255, 255, 0.2)',
+      minWidth: '280px'
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--spacing-md)' }}>
+        <div>
+          <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 600, color: 'white' }}>👤 {user.username}</h3>
+          <p style={{ margin: '4px 0 0 0', fontSize: '0.875rem', opacity: 0.9, color: 'white' }}>{user.email}</p>
         </div>
-        <button onClick={logout} className="btn btn-secondary">
+        <button 
+          onClick={logout} 
+          className="btn-modern btn-modern-secondary" 
+          style={{ 
+            background: 'rgba(255, 255, 255, 0.2)', 
+            color: 'white', 
+            border: '1px solid rgba(255, 255, 255, 0.3)',
+            padding: 'var(--spacing-sm) var(--spacing-md)',
+            fontSize: '0.875rem'
+          }}
+        >
           Abmelden
         </button>
       </div>
 
-      <div className="profile-content">
-        <div className="profile-section">
-          <h4>📦 Abonnement</h4>
-          <div className="subscription-card">
-            <div className="subscription-plan">
-              <strong>{getPlanName(subscription.plan_type)}</strong>
-              <span className={`status ${subscription.is_active ? 'active' : 'inactive'}`}>
-                {subscription.is_active ? '✅ Aktiv' : '❌ Inaktiv'}
-              </span>
-            </div>
-            {subscription.expires_at && (
-              <p className="expiry">Läuft ab: {getExpiryDate()}</p>
-            )}
-          </div>
+      <div className="stats-grid-modern" style={{ marginTop: 'var(--spacing-md)', gap: 'var(--spacing-sm)' }}>
+        <div className="stat-card" style={{ padding: 'var(--spacing-md)' }}>
+          <div className="stat-card-value" style={{ fontSize: '1.75rem' }}>{stats.account_count || 0}</div>
+          <div className="stat-card-label" style={{ fontSize: '0.75rem' }}>Accounts</div>
+          <div className="stat-card-max" style={{ fontSize: '0.7rem' }}>Max: {subscription.max_accounts || 1}</div>
         </div>
-
-        <div className="profile-section">
-          <h4>📊 Statistiken</h4>
-          <div className="stats-grid">
-            <div className="stat-item">
-              <div className="stat-value">{stats.account_count || 0}</div>
-              <div className="stat-label">Accounts</div>
-              <div className="stat-limit">Max: {subscription.max_accounts || 1}</div>
-            </div>
-            <div className="stat-item">
-              <div className="stat-value">{stats.group_count || 0}</div>
-              <div className="stat-label">Gruppen</div>
-              <div className="stat-limit">Max: {subscription.max_groups || 5}</div>
-            </div>
-            <div className="stat-item">
-              <div className="stat-value">{subscription.max_messages_per_day || 10}</div>
-              <div className="stat-label">Nachrichten/Tag</div>
-            </div>
-          </div>
+        <div className="stat-card" style={{ padding: 'var(--spacing-md)' }}>
+          <div className="stat-card-value" style={{ fontSize: '1.75rem' }}>{stats.group_count || 0}</div>
+          <div className="stat-card-label" style={{ fontSize: '0.75rem' }}>Gruppen</div>
+          <div className="stat-card-max" style={{ fontSize: '0.7rem' }}>Max: {subscription.max_groups || 5}</div>
         </div>
-
-        {subscription.features && Object.keys(subscription.features).length > 0 && (
-          <div className="profile-section">
-            <h4>✨ Features</h4>
-            <div className="features-list">
-              {Object.entries(subscription.features).map(([key, value]) => (
-                <div key={key} className="feature-item">
-                  {value ? '✅' : '❌'} {key.replace(/_/g, ' ')}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {subscription.plan_type === 'free_trial' && (
-          <div className="upgrade-banner">
-            <h4>🚀 Upgrade verfügbar!</h4>
-            <p>Dein kostenloser Testzugang läuft bald ab. Upgrade jetzt für mehr Features!</p>
-            <button className="btn btn-primary">Paket auswählen</button>
-          </div>
-        )}
+        <div className="stat-card" style={{ padding: 'var(--spacing-md)' }}>
+          <div className="stat-card-value" style={{ fontSize: '1.75rem' }}>{subscription.max_messages_per_day || 10}</div>
+          <div className="stat-card-label" style={{ fontSize: '0.75rem' }}>Nachrichten/Tag</div>
+        </div>
       </div>
+
+      {subscription.plan_type === 'free_trial' && (
+        <div style={{ marginTop: 'var(--spacing-md)', textAlign: 'center' }}>
+          <button 
+            className="btn-modern btn-modern-primary" 
+            style={{ 
+              background: 'rgba(255, 255, 255, 0.25)', 
+              color: 'white', 
+              border: '1px solid rgba(255, 255, 255, 0.4)',
+              width: '100%',
+              fontSize: '0.875rem',
+              padding: 'var(--spacing-sm) var(--spacing-md)'
+            }}
+            onClick={() => window.location.hash = '#subscriptions'}
+          >
+            🚀 Upgrade verfügbar
+          </button>
+        </div>
+      )}
     </div>
   )
 }

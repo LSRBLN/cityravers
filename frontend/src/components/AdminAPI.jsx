@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import axios from 'axios'
 import './AdminDashboard.css'
-
-const API_BASE = '/api'
+import { API_BASE } from '../config/api'
 
 function AdminAPI() {
   const [apiSettings, setApiSettings] = useState({

@@ -4,8 +4,7 @@ import AdminUserManagement from './AdminUserManagement'
 import AdminSettings from './AdminSettings'
 import AdminAPI from './AdminAPI'
 import './AdminDashboard.css'
-
-const API_BASE = '/api'
+import { API_BASE } from '../config/api'
 
 function AdminDashboard() {
   const [activeTab, setActiveTab] = useState('stats')

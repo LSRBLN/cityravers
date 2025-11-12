@@ -1,7 +1,6 @@
 import React, { useState } from 'react'
 import axios from 'axios'
-
-const API_BASE = '/api'
+import { API_BASE } from '../config/api'
 
 export default function AccountManager({ accounts, proxies = [], onUpdate }) {
   const [showModal, setShowModal] = useState(false)

@@ -2,8 +2,7 @@ import React, { useState, useEffect } from 'react'
 import axios from 'axios'
 import { useAuth } from '../contexts/AuthContext'
 import './SubscriptionPlans.css'
-
-const API_BASE = '/api'
+import { API_BASE } from '../config/api'
 
 export default function SubscriptionPlans() {
   const { user, refreshUser } = useAuth()
