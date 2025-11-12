@@ -178,17 +178,22 @@ async def startup_event():
     except Exception as e:
         logger.warning(f"⚠️  Datenbank-Migration fehlgeschlagen (kann ignoriert werden wenn Schema aktuell): {e}")
     
-    scheduler_service.start()
-    await scheduler_service.load_pending_messages()
-    await warming_service.start_all_active_warmings()
+    if scheduler_service and warming_service:
+        scheduler_service.start()
+        await scheduler_service.load_pending_messages()
+        await warming_service.start_all_active_warmings()
+    else:
+        logger.warning("Services nicht verfügbar (DB-Problem), überspringe Startup")
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Beendet Services beim Shutdown"""
     await account_manager.disconnect_all()
     await bot_manager.disconnect_all()
-    await warming_service.stop_all_warmings()
-    scheduler_service.shutdown()
+    if warming_service:
+        await warming_service.stop_all_warmings()
+    if scheduler_service:
+        scheduler_service.shutdown()
 
 # Account Endpoints
 @app.post("/api/accounts", response_model=dict)
