@@ -1,0 +1,18 @@
+telethon>=1.34.0
+python-telegram-bot>=20.0
+python-dotenv>=1.0.0
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+sqlalchemy>=2.0.0
+apscheduler>=3.10.0
+pydantic>=2.0.0
+python-multipart>=0.0.6
+pysocks>=1.7.1
+pycryptodome>=3.19.0
+bcrypt>=4.0.0
+python-jose[cryptography]>=3.3.0
+requests>=2.31.0
+psycopg2-binary>=2.9.0  # PostgreSQL Support (optional)
+slowapi>=0.1.9  # Rate Limiting
+cryptography>=41.0.0  # Für Proxy-Verschlüsselung
+

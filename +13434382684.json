@@ -1,0 +1,30 @@
+{
+    "app_hash": "eb06d4abfb49dc3eeb1aeb98ae0f581e",
+    "app_id": 6,
+    "app_version": "4.16.2 x64",
+    "avatar": "img\/7100921942.png",
+    "device": "HUAWEIVCE-L22",
+    "first_name": "Zak",
+    "ipv6": false,
+    "lang_pack": "eo",
+    "last_check_time": 1712295946,
+    "last_name": "Engel",
+    "last_use": 1714247243,
+    "layer": 167,
+    "phone": "+13434382684",
+    "premium": false,
+    "proxy": [
+        2,
+        "resi.telegramproxy.net",
+        16666,
+        true,
+        "gohzgfljdjsphaw40358-zone-resi-region-de",
+        "avynqwcqhe"
+    ],
+    "register_time": 1712295946,
+    "sdk": "SDK 30",
+    "session_file": "+13434382684",
+    "sex": "1",
+    "system_lang_pack": "es-cl",
+    "username": null
+}

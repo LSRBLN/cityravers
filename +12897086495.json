@@ -1,0 +1,30 @@
+{
+    "app_hash": "eb06d4abfb49dc3eeb1aeb98ae0f581e",
+    "app_id": 6,
+    "app_version": "4.16.2 x64",
+    "avatar": "img\/7143334896.png",
+    "device": "motorolamoto g72",
+    "first_name": "Emil",
+    "ipv6": false,
+    "lang_pack": "pl",
+    "last_check_time": 1712291398,
+    "last_name": "Geisler",
+    "last_use": 1714247217,
+    "layer": 167,
+    "phone": "+12897086495",
+    "premium": false,
+    "proxy": [
+        2,
+        "resi.telegramproxy.net",
+        16666,
+        true,
+        "gohzgfljdjsphaw40358-zone-resi-region-de",
+        "avynqwcqhe"
+    ],
+    "register_time": 1712291398,
+    "sdk": "SDK 31",
+    "session_file": "+12897086495",
+    "sex": "1",
+    "system_lang_pack": "ar-iq",
+    "username": null
+}

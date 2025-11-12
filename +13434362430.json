@@ -1,0 +1,30 @@
+{
+    "app_hash": "eb06d4abfb49dc3eeb1aeb98ae0f581e",
+    "app_id": 6,
+    "app_version": "4.16.2 x64",
+    "avatar": "img\/6898985497.png",
+    "device": "samsungSM-G988W",
+    "first_name": "Sven",
+    "ipv6": false,
+    "lang_pack": "fr",
+    "last_check_time": 1712289832,
+    "last_name": "Burgstaller",
+    "last_use": 1714247228,
+    "layer": 167,
+    "phone": "+13434362430",
+    "premium": false,
+    "proxy": [
+        2,
+        "resi.telegramproxy.net",
+        16666,
+        true,
+        "gohzgfljdjsphaw40358-zone-resi-region-de",
+        "avynqwcqhe"
+    ],
+    "register_time": 1712289832,
+    "sdk": "SDK 31",
+    "session_file": "+13434362430",
+    "sex": "1",
+    "system_lang_pack": "es-py",
+    "username": null
+}
