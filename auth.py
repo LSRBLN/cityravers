@@ -24,9 +24,13 @@ db_engine = init_db()
 import os
 SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 if not SECRET_KEY:
-    raise RuntimeError(
-        "JWT_SECRET_KEY muss in Umgebungsvariablen gesetzt sein. "
-        "Generiere einen sicheren Key mit: openssl rand -hex 32"
+    # Auf Vercel sollte dies als Environment Variable gesetzt sein
+    # Für lokale Entwicklung: Fallback (NICHT für Produktion!)
+    import secrets
+    SECRET_KEY = secrets.token_urlsafe(32)
+    logger.warning(
+        "JWT_SECRET_KEY nicht gesetzt! Verwende temporären Key. "
+        "Setze JWT_SECRET_KEY in Environment Variables für Produktion!"
     )
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 Tage

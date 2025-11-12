@@ -39,13 +39,19 @@ import json
 import logging
 
 # Logging konfigurieren
+# Auf Vercel gibt es kein persistentes Dateisystem, daher nur StreamHandler
+handlers = [logging.StreamHandler()]
+try:
+    # Versuche FileHandler nur wenn möglich (nicht auf Vercel)
+    handlers.append(logging.FileHandler('backend.log'))
+except (OSError, PermissionError):
+    # Auf Vercel/Serverless wird FileHandler ignoriert
+    pass
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('backend.log'),
-        logging.StreamHandler()
-    ]
+    handlers=handlers
 )
 logger = logging.getLogger(__name__)
 
@@ -73,17 +79,34 @@ app.add_middleware(
 )
 
 # Globale Instanzen
-db_engine = init_db()
+# Initialisiere DB mit Fehlerbehandlung
+try:
+    db_engine = init_db()
+except Exception as e:
+    logger.error(f"Fehler bei DB-Initialisierung: {e}")
+    db_engine = None
+
 account_manager = AccountManager()
 bot_manager = BotManager()
-scheduler_service = SchedulerService(account_manager, bot_manager, db_engine)
-warming_service = WarmingService(account_manager, db_engine)
 
-# Upload-Verzeichnisse erstellen
+# Services nur initialisieren wenn DB verfügbar
+if db_engine:
+    scheduler_service = SchedulerService(account_manager, bot_manager, db_engine)
+    warming_service = WarmingService(account_manager, db_engine)
+else:
+    logger.warning("DB nicht verfügbar, Services werden nicht initialisiert")
+    scheduler_service = None
+    warming_service = None
+
+# Upload-Verzeichnisse erstellen (nur wenn möglich)
 UPLOAD_DIR = Path("uploads")
 SESSIONS_DIR = Path("sessions")
-UPLOAD_DIR.mkdir(exist_ok=True)
-SESSIONS_DIR.mkdir(exist_ok=True)
+try:
+    UPLOAD_DIR.mkdir(exist_ok=True)
+    SESSIONS_DIR.mkdir(exist_ok=True)
+except (OSError, PermissionError):
+    # Auf Vercel/Serverless nicht möglich
+    logger.warning("Upload-Verzeichnisse können nicht erstellt werden (Serverless)")
 
 # Pydantic Models
 class AccountCreate(BaseModel):
