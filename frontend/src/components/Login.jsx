@@ -116,6 +116,7 @@ export default function Login() {
                 required
                 placeholder="username oder email@example.com"
                 disabled={loading}
+                autoComplete="username"
               />
             </div>
 
@@ -128,6 +129,7 @@ export default function Login() {
                 required
                 placeholder="Dein Passwort"
                 disabled={loading}
+                autoComplete="current-password"
               />
             </div>
 
@@ -146,6 +148,7 @@ export default function Login() {
                 required
                 placeholder="email@example.com"
                 disabled={loading}
+                autoComplete="email"
               />
             </div>
 
@@ -159,6 +162,7 @@ export default function Login() {
                 placeholder="username"
                 disabled={loading}
                 minLength={3}
+                autoComplete="username"
               />
             </div>
 
@@ -172,6 +176,7 @@ export default function Login() {
                 placeholder="Mindestens 6 Zeichen"
                 disabled={loading}
                 minLength={6}
+                autoComplete="new-password"
               />
             </div>
 
@@ -185,6 +190,7 @@ export default function Login() {
                 placeholder="Passwort wiederholen"
                 disabled={loading}
                 minLength={6}
+                autoComplete="new-password"
               />
             </div>
 

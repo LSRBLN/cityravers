@@ -68,26 +68,36 @@ export default function AccountManager({ accounts, proxies = [], onUpdate }) {
       const response = await axios.post(`${API_BASE}/accounts`, submitData)
       
       if (response.data.status === 'code_required') {
-        const code = prompt('Gib den Code ein, den du per Telegram erhalten hast:')
-        if (code) {
-          await axios.post(`${API_BASE}/accounts/${response.data.account_id}/login`, {
-            account_id: response.data.account_id,
-            code: code
-          })
-        }
+        // Code wurde automatisch angefordert beim Erstellen
+        // Öffne Login-Modal für Code-Eingabe
+        setLoginAccountId(response.data.account_id)
+        setLoginStep('code')
+        setLoginCode('')
+        setLoginPassword('')
+        setShowLoginModal(true)
+        setShowModal(false) // Schließe Account-Erstellungs-Modal
+        alert('✅ Code wurde an deine Telefonnummer gesendet. Prüfe Telegram!')
       } else if (response.data.status === 'password_required') {
-        const password = prompt('Zwei-Faktor-Authentifizierung: Gib dein Passwort ein:')
-        if (password) {
-          await axios.post(`${API_BASE}/accounts/${response.data.account_id}/login`, {
-            account_id: response.data.account_id,
-            password: password
-          })
-        }
+        // 2FA erforderlich - öffne Login-Modal für Passwort
+        setLoginAccountId(response.data.account_id)
+        setLoginStep('password')
+        setLoginCode('')
+        setLoginPassword('')
+        setShowLoginModal(true)
+        setShowModal(false) // Schließe Account-Erstellungs-Modal
+        alert('⚠️ Zwei-Faktor-Authentifizierung aktiviert. Bitte Passwort eingeben.')
+      } else if (response.data.status === 'connected') {
+        // Account wurde erfolgreich erstellt und ist bereits verbunden
+        setShowModal(false)
+        setFormData({ name: '', account_type: 'user', api_id: '', api_hash: '', bot_token: '', phone_number: '', session_name: '', proxy_id: '' })
+        alert('✅ Account erfolgreich erstellt und verbunden!')
+        onUpdate()
+      } else {
+        // Unbekannter Status
+        setShowModal(false)
+        setFormData({ name: '', account_type: 'user', api_id: '', api_hash: '', bot_token: '', phone_number: '', session_name: '', proxy_id: '' })
+        onUpdate()
       }
-      
-      setShowModal(false)
-      setFormData({ name: '', account_type: 'user', api_id: '', api_hash: '', bot_token: '', phone_number: '', session_name: '', proxy_id: '' })
-      onUpdate()
     } catch (error) {
       alert('Fehler: ' + (error.response?.data?.detail || error.message))
     } finally {
@@ -134,6 +144,29 @@ export default function AccountManager({ accounts, proxies = [], onUpdate }) {
     setLoginCode('')
     setLoginPassword('')
     setShowLoginModal(true)
+    setLoginLoading(true)
+    
+    // Automatisch Code anfordern beim Öffnen des Modals
+    try {
+      const response = await axios.post(`${API_BASE}/accounts/${accountId}/request-code`)
+      
+      if (response.data.status === 'code_required') {
+        // Code wurde angefordert
+        // Kein Alert, da Modal bereits offen ist
+      } else if (response.data.status === 'connected') {
+        alert('✅ Account ist bereits verbunden!')
+        setShowLoginModal(false)
+        onUpdate()
+      }
+    } catch (error) {
+      // Wenn Endpunkt nicht existiert oder Fehler, zeige Fehler
+      if (error.response?.status !== 404) {
+        alert('Fehler beim Anfordern des Codes: ' + (error.response?.data?.detail || error.message))
+      }
+      // Bei 404: Endpunkt existiert nicht, aber Modal bleibt offen für manuelle Eingabe
+    } finally {
+      setLoginLoading(false)
+    }
   }
 
   const handleLoginSubmit = async (e) => {
@@ -152,7 +185,19 @@ export default function AccountManager({ accounts, proxies = [], onUpdate }) {
       } else if (loginStep === 'password' && loginPassword) {
         loginPayload.password = loginPassword
       } else {
-        alert('Bitte Code oder Passwort eingeben')
+        // Wenn kein Code vorhanden ist, fordere einen an
+        if (loginStep === 'code' && !loginCode) {
+          try {
+            const codeResponse = await axios.post(`${API_BASE}/accounts/${loginAccountId}/request-code`)
+            if (codeResponse.data.status === 'code_required') {
+              alert('✅ Code wurde an deine Telefonnummer gesendet. Prüfe Telegram!')
+            }
+          } catch (codeError) {
+            alert('Fehler beim Anfordern des Codes: ' + (codeError.response?.data?.detail || codeError.message))
+          }
+        } else {
+          alert('Bitte Code oder Passwort eingeben')
+        }
         setLoginLoading(false)
         return
       }
@@ -170,12 +215,33 @@ export default function AccountManager({ accounts, proxies = [], onUpdate }) {
         setLoginStep('password')
         alert('⚠️ Zwei-Faktor-Authentifizierung aktiviert. Bitte Passwort eingeben.')
       } else if (response.data.status === 'code_required') {
+        // Code wurde erneut angefordert (z.B. weil der alte Code ungültig war)
+        setLoginCode('') // Lösche alten Code
         alert('⚠️ Code wurde erneut angefordert. Prüfe Telegram!')
       } else {
         alert('Fehler: ' + (response.data.error || response.data.status || 'Unbekannter Fehler'))
       }
     } catch (error) {
-      alert('Fehler: ' + (error.response?.data?.detail || error.message))
+      // Wenn der Code ungültig ist, könnte das Backend einen Fehler zurückgeben
+      // In diesem Fall fordern wir einen neuen Code an
+      if (error.response?.status === 400 || error.response?.status === 401) {
+        const errorDetail = error.response?.data?.detail || error.message
+        if (errorDetail.toLowerCase().includes('code') || errorDetail.toLowerCase().includes('invalid')) {
+          try {
+            const codeResponse = await axios.post(`${API_BASE}/accounts/${loginAccountId}/request-code`)
+            if (codeResponse.data.status === 'code_required') {
+              setLoginCode('') // Lösche alten Code
+              alert('⚠️ Code ungültig. Neuer Code wurde angefordert. Prüfe Telegram!')
+            }
+          } catch (codeError) {
+            alert('Fehler: ' + errorDetail + '\n\nFehler beim Anfordern eines neuen Codes: ' + (codeError.response?.data?.detail || codeError.message))
+          }
+        } else {
+          alert('Fehler: ' + errorDetail)
+        }
+      } else {
+        alert('Fehler: ' + (error.response?.data?.detail || error.message))
+      }
     } finally {
       setLoginLoading(false)
     }
