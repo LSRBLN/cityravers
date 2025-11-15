@@ -88,17 +88,40 @@
 
 /* Professional Card Styles */
 .professional-card {
-  background: white;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   border-radius: var(--radius-lg);
   padding: var(--spacing-xl);
-  box-shadow: var(--shadow-md);
-  border: 1px solid var(--gray-200);
-  transition: all var(--transition-base);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+  /* Hardware-Beschleunigung */
+  transform: translateZ(0);
+  will-change: transform, box-shadow;
+  position: relative;
+  overflow: hidden;
+}
+
+.professional-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(102, 126, 234, 0.3), transparent);
+  opacity: 0;
+  transition: opacity var(--transition-fast);
 }
 
 .professional-card:hover {
-  box-shadow: var(--shadow-lg);
-  transform: translateY(-2px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(0, 0, 0, 0.08);
+  transform: translateY(-4px) translateZ(0);
+}
+
+.professional-card:hover::before {
+  opacity: 1;
 }
 
 .professional-card-header {
@@ -132,15 +155,18 @@
   color: white;
   border-radius: var(--radius-md);
   padding: var(--spacing-lg);
-  box-shadow: var(--shadow-md);
+  box-shadow: 0 8px 24px rgba(102, 126, 234, 0.4), 0 4px 8px rgba(0, 0, 0, 0.1);
   position: relative;
   overflow: hidden;
-  transition: all var(--transition-base);
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+  /* Hardware-Beschleunigung */
+  transform: translateZ(0);
+  will-change: transform, box-shadow;
 }
 
 .stat-card:hover {
-  transform: translateY(-4px);
-  box-shadow: var(--shadow-xl);
+  transform: translateY(-4px) translateZ(0);
+  box-shadow: 0 16px 40px rgba(102, 126, 234, 0.5), 0 8px 16px rgba(0, 0, 0, 0.15);
 }
 
 .stat-card::before {
@@ -241,16 +267,25 @@
   box-shadow: var(--shadow);
 }
 
-/* Professional Header */
+/* Professional Header - Edles Design */
 .professional-header {
-  background: linear-gradient(135deg, var(--primary-600) 0%, var(--secondary-600) 100%);
+  background: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4c1d95 100%);
   color: white;
-  padding: var(--spacing-2xl) var(--spacing-xl);
+  padding: var(--spacing-xl) var(--spacing-lg);
   border-radius: var(--radius-xl);
-  margin-bottom: var(--spacing-2xl);
-  box-shadow: var(--shadow-xl);
+  margin-bottom: 0;
+  box-shadow: 0 20px 60px rgba(79, 70, 229, 0.4), 0 8px 24px rgba(0, 0, 0, 0.3);
   position: relative;
-  overflow: visible;
+  overflow: hidden;
+  /* Hardware-Beschleunigung */
+  transform: translateZ(0);
+  will-change: transform;
+  /* Glassmorphism-Effekt */
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  /* Z-Index für Header */
+  z-index: 100;
 }
 
 .professional-header::before {

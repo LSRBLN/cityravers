@@ -35,36 +35,21 @@ export default function UserProfile() {
       border: '1px solid rgba(255, 255, 255, 0.2)',
       minWidth: '280px'
     }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--spacing-md)' }}>
-        <div>
-          <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 600, color: 'white' }}>👤 {user.username}</h3>
-          <p style={{ margin: '4px 0 0 0', fontSize: '0.875rem', opacity: 0.9, color: 'white' }}>{user.email}</p>
-        </div>
-        <button 
-          onClick={logout} 
-          className="btn-modern btn-modern-secondary" 
-          style={{ 
-            background: 'rgba(255, 255, 255, 0.2)', 
-            color: 'white', 
-            border: '1px solid rgba(255, 255, 255, 0.3)',
-            padding: 'var(--spacing-sm) var(--spacing-md)',
-            fontSize: '0.875rem'
-          }}
-        >
-          Abmelden
-        </button>
+      <div style={{ marginBottom: 'var(--spacing-md)' }}>
+        <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 600, color: 'white' }}>👤 {user.username}</h3>
+        <p style={{ margin: '4px 0 0 0', fontSize: '0.875rem', opacity: 0.9, color: 'white' }}>{user.email}</p>
       </div>
 
       <div className="stats-grid-modern" style={{ marginTop: 'var(--spacing-md)', gap: 'var(--spacing-sm)' }}>
         <div className="stat-card" style={{ padding: 'var(--spacing-md)' }}>
           <div className="stat-card-value" style={{ fontSize: '1.75rem' }}>{stats.account_count || 0}</div>
           <div className="stat-card-label" style={{ fontSize: '0.75rem' }}>Accounts</div>
-          <div className="stat-card-max" style={{ fontSize: '0.7rem' }}>Max: {subscription.max_accounts || 1}</div>
+          <div className="stat-card-max" style={{ fontSize: '0.7rem', color: 'rgba(255, 255, 255, 0.8)' }}>Max: {subscription.max_accounts || 1}</div>
         </div>
         <div className="stat-card" style={{ padding: 'var(--spacing-md)' }}>
           <div className="stat-card-value" style={{ fontSize: '1.75rem' }}>{stats.group_count || 0}</div>
           <div className="stat-card-label" style={{ fontSize: '0.75rem' }}>Gruppen</div>
-          <div className="stat-card-max" style={{ fontSize: '0.7rem' }}>Max: {subscription.max_groups || 5}</div>
+          <div className="stat-card-max" style={{ fontSize: '0.7rem', color: 'rgba(255, 255, 255, 0.8)' }}>Max: {subscription.max_groups || 5}</div>
         </div>
         <div className="stat-card" style={{ padding: 'var(--spacing-md)' }}>
           <div className="stat-card-value" style={{ fontSize: '1.75rem' }}>{subscription.max_messages_per_day || 10}</div>

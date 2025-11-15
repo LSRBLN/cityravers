@@ -26,7 +26,7 @@ load_dotenv()
 
 from database import init_db, get_session, Account, Group, ScheduledMessage, ScrapedUser, AccountWarming, WarmingActivity, MessageTemplate, SentMessage, AccountStatistic, Proxy, User, Subscription, PhoneNumberPurchase, SystemSettings
 from auth import get_current_active_user, get_current_admin, create_access_token, get_password_hash, verify_password, check_subscription, check_account_limit, check_group_limit, ACCESS_TOKEN_EXPIRE_MINUTES
-from phone_providers import FiveSimProvider, SMSActivateProvider, SMSManagerProvider, GetSMSCodeProvider
+from phone_providers import FiveSimProvider, SMSActivateProvider, SMSManagerProvider, GetSMSCodeProvider, OnlineSimProvider
 from account_manager import AccountManager
 from bot_manager import BotManager
 from scheduler_service import SchedulerService
@@ -125,6 +125,7 @@ class AccountLogin(BaseModel):
     account_id: int
     code: Optional[str] = None
     password: Optional[str] = None
+    phone_code_hash: Optional[str] = None  # Wird beim request-code zurückgegeben
 
 class GroupCreate(BaseModel):
     name: str
@@ -300,36 +301,73 @@ async def request_code(
     db: Session = Depends(get_db)
 ):
     """Fordert einen Login-Code für einen Account an"""
-    db_account = db.query(Account).filter(Account.id == account_id).first()
-    if not db_account:
-        raise HTTPException(status_code=404, detail="Account nicht gefunden")
-    
-    # Prüfe ob Account dem User gehört
-    if db_account.user_id and db_account.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Zugriff verweigert: Account gehört nicht zu diesem Benutzer")
-    
-    if not db_account.phone_number:
-        raise HTTPException(status_code=400, detail="Telefonnummer fehlt. Bitte zuerst Telefonnummer setzen.")
-    
-    # Lade Proxy falls vorhanden (mit entschlüsselten Passwörtern)
-    proxy_config = None
-    if db_account.proxy_id:
-        proxy = db.query(Proxy).filter(Proxy.id == db_account.proxy_id).first()
-        if proxy:
-            proxy_config = get_proxy_config_decrypted(proxy)
-    
-    # Versuche Verbindung - wenn Session nicht autorisiert, wird Code angefordert
-    result = await account_manager.add_account(
-        account_id=account_id,
-        api_id=db_account.api_id,
-        api_hash=db_account.api_hash,
-        session_name=db_account.session_name,
-        phone_number=db_account.phone_number,
-        session_file_path=db_account.session_file_path,
-        proxy_config=proxy_config
-    )
-    
-    return result
+    try:
+        db_account = db.query(Account).filter(Account.id == account_id).first()
+        if not db_account:
+            logger.error(f"Account {account_id} nicht gefunden")
+            raise HTTPException(status_code=404, detail="Account nicht gefunden")
+        
+        # Prüfe ob Account dem User gehört
+        if db_account.user_id and db_account.user_id != current_user.id:
+            logger.error(f"Zugriff verweigert: Account {account_id} gehört nicht zu User {current_user.id}")
+            raise HTTPException(status_code=403, detail="Zugriff verweigert: Account gehört nicht zu diesem Benutzer")
+        
+        if not db_account.phone_number:
+            logger.error(f"Telefonnummer fehlt für Account {account_id}")
+            raise HTTPException(status_code=400, detail="Telefonnummer fehlt. Bitte zuerst Telefonnummer setzen.")
+        
+        logger.info(f"Fordere Code an für Account {account_id} (Telefonnummer: {db_account.phone_number})")
+        
+        # Lade Proxy falls vorhanden (mit entschlüsselten Passwörtern)
+        proxy_config = None
+        if db_account.proxy_id:
+            proxy = db.query(Proxy).filter(Proxy.id == db_account.proxy_id).first()
+            if proxy:
+                proxy_config = get_proxy_config_decrypted(proxy)
+                logger.info(f"Proxy {db_account.proxy_id} wird verwendet")
+        
+        # Prüfe API Credentials
+        api_id = db_account.api_id or os.getenv('TELEGRAM_API_ID')
+        api_hash = db_account.api_hash or os.getenv('TELEGRAM_API_HASH')
+        
+        if not api_id or not api_hash:
+            logger.error(f"API Credentials fehlen für Account {account_id}")
+            raise HTTPException(
+                status_code=400, 
+                detail="API ID und API Hash fehlen. Bitte in den Account-Einstellungen setzen oder als Umgebungsvariablen konfigurieren."
+            )
+        
+        logger.info(f"API ID vorhanden: {bool(api_id)}, API Hash vorhanden: {bool(api_hash)}")
+        
+        # Versuche Verbindung - wenn Session nicht autorisiert, wird Code angefordert
+        result = await account_manager.add_account(
+            account_id=account_id,
+            api_id=api_id,
+            api_hash=api_hash,
+            session_name=db_account.session_name,
+            phone_number=db_account.phone_number,
+            session_file_path=db_account.session_file_path,
+            proxy_config=proxy_config
+        )
+        
+        logger.info(f"Code-Anfrage Ergebnis für Account {account_id}: {result.get('status')}")
+        
+        # Speichere phone_code_hash in der Datenbank für späteren Login
+        if result.get('status') == 'code_required' and result.get('phone_code_hash'):
+            # Speichere Hash temporär (kann auch in Account-Tabelle gespeichert werden)
+            # Für jetzt verwenden wir die Session-Datei, Telethon speichert es automatisch
+            logger.info(f"phone_code_hash erhalten: {result.get('phone_code_hash')[:10]}...")
+        
+        # Wenn Fehler, logge Details
+        if result.get('status') == 'error':
+            logger.error(f"Fehler bei Code-Anfrage für Account {account_id}: {result.get('error')}")
+        
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unerwarteter Fehler bei Code-Anfrage für Account {account_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Fehler beim Anfordern des Codes: {str(e)}")
 
 @app.post("/api/accounts/{account_id}/login", response_model=dict)
 async def login_account(account_id: int, login: AccountLogin, db: Session = Depends(get_db)):
@@ -345,7 +383,16 @@ async def login_account(account_id: int, login: AccountLogin, db: Session = Depe
         if proxy:
             proxy_config = get_proxy_config_decrypted(proxy)
     
+    # Verwende gespeichertes 2FA-Passwort falls vorhanden und kein Passwort übergeben wurde
+    final_password = login.password
+    if not final_password and db_account.two_factor_password:
+        try:
+            final_password = decrypt_string(db_account.two_factor_password)
+        except Exception as e:
+            logger.warning(f"Fehler beim Entschlüsseln des 2FA-Passworts für Account {account_id}: {str(e)}")
+    
     # API ID/Hash können None sein, werden in add_account aus Session oder Umgebungsvariablen geladen
+    # phone_code_hash wird von Telethon automatisch in der Session gespeichert, aber wir können ihn auch explizit übergeben
     result = await account_manager.add_account(
         account_id=account_id,
         api_id=db_account.api_id,
@@ -353,9 +400,10 @@ async def login_account(account_id: int, login: AccountLogin, db: Session = Depe
         session_name=db_account.session_name,
         phone_number=db_account.phone_number,
         code=login.code,
-        password=login.password,
+        password=final_password,  # Verwende gespeichertes 2FA-Passwort falls vorhanden
         session_file_path=db_account.session_file_path,
-        proxy_config=proxy_config
+        proxy_config=proxy_config,
+        phone_code_hash=login.phone_code_hash  # Falls explizit übergeben
     )
     
     if result.get("status") == "connected":
@@ -475,6 +523,50 @@ async def get_account_dialogs(account_id: int):
     dialogs = await account_manager.get_dialogs(account_id)
     return dialogs
 
+@app.get("/api/accounts/{account_id}/dialogs/{dialog_id}/messages", response_model=dict)
+async def get_dialog_messages(
+    account_id: int,
+    dialog_id: str,
+    limit: int = Query(100, ge=1, le=1000)
+):
+    """Ruft Nachrichten aus einem Dialog ab"""
+    result = await account_manager.get_group_messages(
+        account_id=account_id,
+        group_entity=dialog_id,
+        limit=limit,
+        auto_join=False
+    )
+    
+    if result.get("error"):
+        raise HTTPException(
+            status_code=400,
+            detail=result.get("error")
+        )
+    
+    return result
+
+@app.post("/api/accounts/{account_id}/dialogs/{dialog_id}/send", response_model=dict)
+async def send_dialog_message(
+    account_id: int,
+    dialog_id: str,
+    request: SendDialogMessageRequest
+):
+    """Sendet eine Nachricht an einen Dialog"""
+    result = await account_manager.send_message(
+        account_id=account_id,
+        entity=dialog_id,
+        message=request.message,
+        delay=0
+    )
+    
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=400,
+            detail=result.get("error", "Fehler beim Senden der Nachricht")
+        )
+    
+    return result
+
 @app.post("/api/upload/session", response_model=dict)
 @limiter.limit("10/hour")
 async def upload_session_file(
@@ -524,7 +616,8 @@ async def upload_session_file(
 @limiter.limit("5/hour")
 async def upload_tdata(
     request: Request,
-    files: List[UploadFile] = File(..., alias="files"),
+    file: Optional[UploadFile] = File(None),  # ZIP-Datei
+    files: Optional[List[UploadFile]] = File(None, alias="files"),  # Einzelne Dateien
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
@@ -535,26 +628,329 @@ async def upload_tdata(
         tdata_dir = UPLOAD_DIR / tdata_id
         tdata_dir.mkdir(exist_ok=True)
         
-        # Speichere alle Dateien
         saved_files = []
-        for file in files:
-            file_path = tdata_dir / file.filename
-            with open(file_path, "wb") as buffer:
+        
+        # Prüfe ob ZIP-Datei hochgeladen wurde
+        if file and file.filename and file.filename.endswith('.zip'):
+            import zipfile
+            # Speichere ZIP-Datei temporär
+            zip_path = tdata_dir / file.filename
+            with open(zip_path, "wb") as buffer:
                 shutil.copyfileobj(file.file, buffer)
-            saved_files.append(file.filename)
+            
+            # Entpacke ZIP
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                zip_ref.extractall(tdata_dir)
+            
+            # Prüfe ob tdata-Ordner im ZIP enthalten ist
+            tdata_folder = find_tdata_folder(str(tdata_dir))
+            if tdata_folder:
+                # Verschiebe tdata-Ordner-Inhalt in den Hauptordner
+                tdata_source = Path(tdata_folder)
+                for item in tdata_source.iterdir():
+                    shutil.move(str(item), str(tdata_dir / item.name))
+                # Lösche leeren tdata-Ordner
+                if tdata_source.parent != tdata_dir:
+                    shutil.rmtree(tdata_source, ignore_errors=True)
+            
+            # Lösche ZIP-Datei
+            zip_path.unlink()
+            
+            # Liste alle Dateien im tdata-Ordner
+            for item in tdata_dir.iterdir():
+                if item.is_file():
+                    saved_files.append(item.name)
+        elif files:
+            # Einzelne Dateien hochladen
+            for file in files:
+                file_path = tdata_dir / file.filename
+                with open(file_path, "wb") as buffer:
+                    shutil.copyfileobj(file.file, buffer)
+                saved_files.append(file.filename)
+        else:
+            raise HTTPException(status_code=400, detail="Bitte ZIP-Datei oder einzelne Dateien hochladen")
+        
+        # Prüfe ob tdata-Ordner korrekt strukturiert ist (sollte mindestens 3 Dateien enthalten)
+        if len(saved_files) < 3:
+            logger.warning(f"tdata-Ordner enthält nur {len(saved_files)} Dateien. Normalerweise sollten es mindestens 3 sein.")
         
         return {
             "success": True,
             "tdata_path": str(tdata_dir),
             "files": saved_files,
-            "message": "tdata hochgeladen. Hinweis: tdata-Konvertierung erfordert manuelle Konfiguration."
+            "file_count": len(saved_files),
+            "message": f"✅ tdata erfolgreich hochgeladen ({len(saved_files)} Dateien). Du kannst jetzt einen Account erstellen."
+        }
+    
+    except zipfile.BadZipFile:
+        raise HTTPException(status_code=400, detail="Ungültige ZIP-Datei")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Fehler beim Hochladen von tdata: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Fehler beim Hochladen der Dateien: {str(e)}")
+
+@app.post("/api/accounts/from-tdata", response_model=dict)
+async def create_account_from_tdata(
+    name: str = Form(...),
+    api_id: Optional[str] = Form(None),
+    api_hash: Optional[str] = Form(None),
+    tdata_path: str = Form(...),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Erstellt einen Account aus einem tdata-Ordner
+    
+    Hinweis: tdata wird gespeichert, aber für die Verwendung mit Telethon muss der Account
+    manuell über Telegram Desktop eingeloggt werden, oder die tdata muss zu einer Session konvertiert werden.
+    """
+    try:
+        # Prüfe Account-Limit
+        account_count = db.query(Account).filter(Account.user_id == current_user.id).count()
+        if not check_account_limit(current_user, account_count):
+            raise HTTPException(
+                status_code=403,
+                detail=f"Account-Limit erreicht. Maximal {current_user.subscription.max_accounts if current_user.subscription else 1} Accounts erlaubt."
+            )
+        
+        # Validiere tdata-Ordner
+        tdata_dir = Path(tdata_path)
+        if not tdata_dir.exists() or not tdata_dir.is_dir():
+            raise HTTPException(status_code=404, detail="tdata-Ordner nicht gefunden")
+        
+        # Prüfe ob tdata-Ordner Dateien enthält
+        tdata_files = [f for f in tdata_dir.iterdir() if f.is_file()]
+        if len(tdata_files) < 3:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"tdata-Ordner scheint unvollständig zu sein. Erwartet: mindestens 3 Dateien, gefunden: {len(tdata_files)}"
+            )
+        
+        # Generiere Session-Name (wird später für Konvertierung verwendet)
+        session_name = f"{name.lower().replace(' ', '_')}_{datetime.utcnow().strftime('%Y%m%d')}"
+        
+        # Versuche API Credentials aus Umgebungsvariablen
+        final_api_id = api_id or os.getenv('TELEGRAM_API_ID')
+        final_api_hash = api_hash or os.getenv('TELEGRAM_API_HASH')
+        
+        # Erstelle Account mit tdata-Pfad
+        db_account = Account(
+            user_id=current_user.id,
+            name=name,
+            account_type="user",
+            api_id=final_api_id,
+            api_hash=final_api_hash,
+            session_name=session_name,  # Für spätere Konvertierung
+            tdata_path=tdata_path
+        )
+        db.add(db_account)
+        db.commit()
+        db.refresh(db_account)
+        
+        return {
+            "success": True,
+            "account_id": db_account.id,
+            "tdata_path": tdata_path,
+            "file_count": len(tdata_files),
+            "message": "✅ Account aus tdata erstellt. Hinweis: Für die Verwendung mit diesem Tool muss die tdata zu einer Telethon-Session konvertiert werden. Siehe Anleitung im Modal.",
+            "status": "tdata_imported"
         }
     
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Fehler beim Hochladen von tdata: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Fehler beim Hochladen der Dateien. Bitte versuchen Sie es erneut.")
+        logger.error(f"Fehler beim Erstellen des Accounts aus tdata: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Fehler beim Erstellen des Accounts: {str(e)}")
+
+@app.post("/api/accounts/from-complete-package", response_model=dict)
+async def create_account_from_complete_package(
+    name: str = Form(...),
+    session_file: Optional[UploadFile] = File(None),
+    tdata_zip: Optional[UploadFile] = File(None),
+    json_file: Optional[UploadFile] = File(None),
+    two_factor_password: Optional[str] = Form(None),
+    api_id: Optional[str] = Form(None),
+    api_hash: Optional[str] = Form(None),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Erstellt einen Account aus einem kompletten Paket (TDATA + SESSION + JSON + 2FA)
+    
+    Unterstützt:
+    - TDATA (als ZIP oder einzelne Dateien)
+    - SESSION (.session Datei)
+    - JSON (Metadaten-Datei)
+    - 2FA-Passwort
+    """
+    try:
+        # Prüfe Account-Limit
+        account_count = db.query(Account).filter(Account.user_id == current_user.id).count()
+        if not check_account_limit(current_user, account_count):
+            raise HTTPException(
+                status_code=403,
+                detail=f"Account-Limit erreicht. Maximal {current_user.subscription.max_accounts if current_user.subscription else 1} Accounts erlaubt."
+            )
+        
+        # Erstelle Upload-Ordner für dieses Paket
+        package_id = f"package_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+        package_dir = UPLOAD_DIR / package_id
+        package_dir.mkdir(exist_ok=True)
+        
+        session_file_path = None
+        tdata_path = None
+        json_metadata_path = None
+        encrypted_2fa = None
+        
+        # Verarbeite Session-Datei
+        if session_file:
+            session_path = package_dir / session_file.filename
+            with open(session_path, "wb") as buffer:
+                shutil.copyfileobj(session_file.file, buffer)
+            
+            # Validiere Session
+            is_valid, error = validate_session_file(str(session_path))
+            if not is_valid:
+                raise HTTPException(status_code=400, detail=error or "Ungültige Session-Datei")
+            
+            # Kopiere Session zu sessions/ Verzeichnis
+            session_name = f"{name.lower().replace(' ', '_')}_{datetime.utcnow().strftime('%Y%m%d')}"
+            copied_path = copy_session_file(str(session_path), session_name, str(SESSIONS_DIR))
+            if copied_path:
+                session_file_path = copied_path
+        
+        # Verarbeite TDATA (ZIP)
+        if tdata_zip and tdata_zip.filename.endswith('.zip'):
+            import zipfile
+            zip_path = package_dir / tdata_zip.filename
+            with open(zip_path, "wb") as buffer:
+                shutil.copyfileobj(tdata_zip.file, buffer)
+            
+            # Entpacke ZIP
+            tdata_dir = package_dir / "tdata"
+            tdata_dir.mkdir(exist_ok=True)
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                zip_ref.extractall(tdata_dir)
+            
+            # Prüfe ob tdata-Ordner im ZIP enthalten ist
+            found_tdata = find_tdata_folder(str(tdata_dir))
+            if found_tdata:
+                tdata_path = found_tdata
+            else:
+                # Prüfe ob Dateien direkt im tdata_dir sind
+                tdata_files = [f for f in tdata_dir.iterdir() if f.is_file()]
+                if len(tdata_files) >= 3:
+                    tdata_path = str(tdata_dir)
+        
+        # Verarbeite JSON-Datei
+        if json_file:
+            json_path = package_dir / json_file.filename
+            with open(json_path, "wb") as buffer:
+                shutil.copyfileobj(json_file.file, buffer)
+            
+            # Validiere JSON
+            try:
+                with open(json_path, 'r', encoding='utf-8') as f:
+                    json_data = json.load(f)
+                    # Extrahiere Account-Informationen aus JSON
+                    if not name or name == json_file.filename:
+                        # Versuche Namen aus JSON zu extrahieren
+                        name = json_data.get('phone') or json_data.get('name') or json_data.get('username') or name
+            except json.JSONDecodeError:
+                raise HTTPException(status_code=400, detail="Ungültige JSON-Datei")
+            
+            json_metadata_path = str(json_path)
+        
+        # Verschlüssele 2FA-Passwort falls vorhanden
+        if two_factor_password:
+            encrypted_2fa = encrypt_string(two_factor_password)
+        
+        # Versuche API Credentials zu bestimmen
+        final_api_id = api_id or os.getenv('TELEGRAM_API_ID')
+        final_api_hash = api_hash or os.getenv('TELEGRAM_API_HASH')
+        
+        # Extrahiere API Credentials aus JSON falls vorhanden
+        if json_metadata_path and not final_api_id:
+            try:
+                with open(json_metadata_path, 'r', encoding='utf-8') as f:
+                    json_data = json.load(f)
+                    final_api_id = json_data.get('api_id') or final_api_id
+                    final_api_hash = json_data.get('api_hash') or final_api_hash
+            except:
+                pass
+        
+        # Generiere Session-Name
+        session_name = f"{name.lower().replace(' ', '_')}_{datetime.utcnow().strftime('%Y%m%d')}"
+        
+        # Extrahiere Telefonnummer aus JSON falls vorhanden
+        phone_number = None
+        if json_metadata_path:
+            try:
+                with open(json_metadata_path, 'r', encoding='utf-8') as f:
+                    json_data = json.load(f)
+                    phone_number = json_data.get('phone') or json_data.get('phone_number')
+            except:
+                pass
+        
+        # Erstelle Account
+        db_account = Account(
+            user_id=current_user.id,
+            name=name,
+            account_type="user",
+            api_id=final_api_id,
+            api_hash=final_api_hash,
+            phone_number=phone_number,
+            session_name=session_name,
+            session_file_path=session_file_path,
+            tdata_path=tdata_path,
+            json_metadata_path=json_metadata_path,
+            two_factor_password=encrypted_2fa
+        )
+        db.add(db_account)
+        db.commit()
+        db.refresh(db_account)
+        
+        # Versuche automatische Verbindung wenn Session vorhanden
+        connection_status = None
+        if session_file_path:
+            try:
+                proxy_config = None
+                if db_account.proxy_id:
+                    proxy = db.query(Proxy).filter(Proxy.id == db_account.proxy_id).first()
+                    if proxy:
+                        proxy_config = get_proxy_config_decrypted(proxy)
+                
+                result = await account_manager.add_account(
+                    account_id=db_account.id,
+                    api_id=final_api_id,
+                    api_hash=final_api_hash,
+                    session_name=session_name,
+                    session_file_path=session_file_path,
+                    phone_number=phone_number,
+                    password=two_factor_password,  # 2FA-Passwort für Login
+                    proxy_config=proxy_config
+                )
+                connection_status = result.get('status')
+            except Exception as e:
+                logger.warning(f"Automatische Verbindung fehlgeschlagen: {str(e)}")
+                connection_status = "error"
+        
+        return {
+            "success": True,
+            "account_id": db_account.id,
+            "session_file_path": session_file_path,
+            "tdata_path": tdata_path,
+            "json_metadata_path": json_metadata_path,
+            "has_2fa": bool(encrypted_2fa),
+            "connection_status": connection_status,
+            "message": "✅ Account aus komplettem Paket erstellt!",
+            "status": "imported"
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Fehler beim Erstellen des Accounts aus komplettem Paket: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Fehler beim Erstellen des Accounts: {str(e)}")
 
 @app.post("/api/accounts/from-session", response_model=dict)
 async def create_account_from_session(
@@ -683,6 +1079,46 @@ async def create_group(
         "username": db_group.username
     }
 
+@app.get("/api/accounts/{account_id}/groups", response_model=List[dict])
+async def get_account_groups(
+    account_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Listet alle Gruppen eines Accounts (aus Dialogen)"""
+    account = db.query(Account).filter(Account.id == account_id).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Account nicht gefunden")
+    
+    if account.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Account gehört nicht zum aktuellen Benutzer")
+    
+    # Prüfe ob Account verbunden ist
+    account_info = await account_manager.get_account_info(account_id)
+    if not account_info:
+        raise HTTPException(status_code=400, detail="Account nicht verbunden. Bitte zuerst verbinden.")
+    
+    # Lade Dialoge des Accounts
+    try:
+        dialogs = await account_manager.get_dialogs(account_id)
+        # Filtere nur Gruppen/Kanäle (keine privaten Chats)
+        groups = []
+        for dialog in dialogs:
+            if dialog.get("type") in ["group", "channel", "supergroup"]:
+                groups.append({
+                    "id": dialog.get("id"),
+                    "name": dialog.get("name"),
+                    "chat_id": str(dialog.get("id")),
+                    "chat_type": dialog.get("type"),
+                    "username": dialog.get("username"),
+                    "member_count": dialog.get("member_count"),
+                    "is_public": dialog.get("username") is not None
+                })
+        return groups
+    except Exception as e:
+        logger.error(f"Fehler beim Laden der Gruppen für Account {account_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Fehler beim Laden der Gruppen: {str(e)}")
+
 @app.get("/api/groups", response_model=List[dict])
 async def list_groups(
     current_user: User = Depends(get_current_active_user),
@@ -801,14 +1237,18 @@ class GroupSearchRequest(BaseModel):
 
 class ScrapeGroupMembersRequest(BaseModel):
     account_id: int
-    group_id: int
+    group_id: Optional[int] = None  # Optional, wenn group_entity gesetzt ist
+    group_entity: Optional[str] = None  # Chat-ID oder Username (wird bevorzugt wenn gesetzt)
     limit: int = 10000
 
 class InviteUsersRequest(BaseModel):
     account_id: int
-    group_id: int
-    user_ids: List[str]
+    group_id: Optional[int] = None  # Optional, wenn group_entity gesetzt ist
+    group_entity: Optional[str] = None  # Chat-ID oder Username (wird bevorzugt wenn gesetzt)
+    user_ids: Optional[List[str]] = None  # Optional, wenn usernames gesetzt ist
+    usernames: Optional[List[str]] = None  # Liste von Usernamen (mit oder ohne @)
     delay: float = 2.0
+    invite_method: str = "admin"  # "admin" oder "invite_link"
 
 class InviteFromScrapedRequest(BaseModel):
     account_id: int
@@ -823,9 +1263,18 @@ class ForwardMessageRequest(BaseModel):
     target_group_ids: List[int]
     delay: float = 2.0
 
+class ForwardMessageByIdRequest(BaseModel):
+    account_id: int
+    source_group_entity: Optional[str] = None  # Chat-ID, Username oder Einladungslink
+    source_group_id: Optional[int] = None  # Optional, wenn source_group_entity gesetzt ist
+    message_id: str  # Message-ID als String (kann sehr groß sein)
+    target_group_ids: List[int]
+    delay: float = 2.0
+
 class GetGroupMessagesRequest(BaseModel):
     account_id: int
-    group_id: int
+    group_id: Optional[int] = None  # Optional, wenn manual_group_entity gesetzt ist
+    manual_group_entity: Optional[str] = None  # Manuelle Eingabe: Chat-ID, Username oder Einladungslink
     limit: int = 100
 
 class WarmingConfigCreate(BaseModel):
@@ -855,6 +1304,17 @@ class WarmingConfigUpdate(BaseModel):
 class MessageTemplateCreate(BaseModel):
     name: str
     message: str
+    category: Optional[str] = None
+    tags: Optional[List[str]] = None
+
+class SendDialogMessageRequest(BaseModel):
+    message: str = Field(..., min_length=1, max_length=4096)
+
+class CreateTemplateFromMessageRequest(BaseModel):
+    account_id: int
+    source_group: str  # Chat-ID oder Username
+    message_id: str  # Message ID als String (kann sehr groß sein)
+    template_name: str
     category: Optional[str] = None
     tags: Optional[List[str]] = None
 
@@ -897,6 +1357,13 @@ class CreateBotViaAccountRequest(BaseModel):
     bot_name: str
     bot_username: str
 
+class BulkCreateBotsViaAccountRequest(BaseModel):
+    account_id: int
+    count: int = Field(default=10, ge=1, le=50)  # Anzahl Bots (1-50)
+    name_prefix: str = "Group Bot"  # Präfix für Bot-Namen
+    username_prefix: str = "group_bot"  # Präfix für Bot-Usernames
+    delay_between_bots: float = Field(default=3.0, ge=1.0, le=60.0)  # Delay zwischen Bot-Erstellungen
+
 class CheckGroupRequest(BaseModel):
     account_id: int
     group_entity: str  # Chat-ID, Username oder Entity
@@ -933,10 +1400,17 @@ class PurchaseSubscriptionRequest(BaseModel):
 
 # Phone Provider Models
 class BuyPhoneNumberRequest(BaseModel):
-    provider: str = "5sim"  # '5sim', 'sms-activate', 'sms-manager', 'getsmscode'
+    provider: str = "5sim"  # '5sim', 'sms-activate', 'sms-manager', 'getsmscode', 'onlinesim'
     country: str = "germany"
     service: str = "telegram"
     operator: Optional[str] = None
+
+class AutoCreateAccountsRequest(BaseModel):
+    provider: str = "5sim"  # Provider-Name
+    country: str = "germany"
+    service: str = "telegram"
+    max_accounts: int = 5  # Maximale Anzahl zu erstellender Accounts
+    min_balance: Optional[float] = None  # Mindest-Guthaben (optional)
 
 # Auth Endpoints
 @app.post("/api/auth/register", response_model=dict)
@@ -1137,8 +1611,14 @@ async def buy_phone_number(
         if not provider_api_key:
             raise HTTPException(status_code=500, detail="GetSMSCode API Key nicht konfiguriert")
         provider = GetSMSCodeProvider(provider_api_key)
+    elif request.provider == "onlinesim":
+        setting = db.query(SystemSettings).filter(SystemSettings.key == "onlinesim_api_key").first()
+        provider_api_key = setting.value if setting else os.getenv("ONLINESIM_API_KEY")
+        if not provider_api_key:
+            raise HTTPException(status_code=500, detail="OnlineSim API Key nicht konfiguriert")
+        provider = OnlineSimProvider(provider_api_key)
     else:
-        raise HTTPException(status_code=400, detail=f"Unbekannter Provider: {request.provider}. Verfügbar: 5sim, sms-activate, sms-manager, getsmscode")
+        raise HTTPException(status_code=400, detail=f"Unbekannter Provider: {request.provider}. Verfügbar: 5sim, sms-activate, sms-manager, getsmscode, onlinesim")
     
     # Kaufe Nummer
     buy_result = await provider.buy_number(
@@ -1148,9 +1628,21 @@ async def buy_phone_number(
     )
     
     if not buy_result.get("success"):
+        error_msg = buy_result.get('error', 'Unbekannter Fehler')
+        is_retryable = buy_result.get('retryable', False)
+        
+        # Verbesserte Fehlermeldung
+        if "TRY_AGAIN_LATER" in error_msg.upper():
+            error_msg = f"Rate-Limit erreicht. OnlineSim.io hat temporär keine Nummern verfügbar. Bitte in ein paar Minuten erneut versuchen. (Original: {error_msg})"
+        elif "NO_NUMBERS" in error_msg.upper():
+            error_msg = f"Keine Nummern verfügbar für {request.country} bei OnlineSim.io. Bitte später erneut versuchen oder ein anderes Land wählen. (Original: {error_msg})"
+        elif "NO_BALANCE" in error_msg.upper():
+            error_msg = f"Nicht genug Guthaben bei OnlineSim.io. Bitte Guthaben aufladen. (Original: {error_msg})"
+        
+        status_code = 429 if is_retryable else 400
         raise HTTPException(
-            status_code=400,
-            detail=f"Fehler beim Kauf der Nummer: {buy_result.get('error', 'Unbekannter Fehler')}"
+            status_code=status_code,
+            detail=f"Fehler beim Kauf der Nummer: {error_msg}"
         )
     
     # Speichere Kauf in Datenbank
@@ -1293,6 +1785,543 @@ async def buy_phone_number(
             "error": "Account-Erstellung fehlgeschlagen. Bitte Support kontaktieren.",
             "message": "❌ Nummer gekauft, aber Account-Erstellung fehlgeschlagen"
         }
+
+@app.get("/api/phone/countries-prices", response_model=dict)
+async def get_countries_prices(
+    provider: str = Query("onlinesim", description="Provider: onlinesim, 5sim, etc."),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Gibt alle verfügbaren Länder mit Preisen zurück"""
+    try:
+        # Lade Provider
+        if provider == "onlinesim":
+            setting = db.query(SystemSettings).filter(SystemSettings.key == "onlinesim_api_key").first()
+            provider_api_key = setting.value if setting else os.getenv("ONLINESIM_API_KEY")
+            if not provider_api_key:
+                raise HTTPException(status_code=500, detail="OnlineSim API Key nicht konfiguriert")
+            provider = OnlineSimProvider(provider_api_key)
+            
+            # Hole Tarife
+            tariffs_result = await provider.get_tariffs()
+            if not tariffs_result.get("success"):
+                raise HTTPException(status_code=500, detail=f"Fehler beim Abrufen der Tarife: {tariffs_result.get('error')}")
+            
+            tariffs = tariffs_result.get("tariffs", {})
+            
+            # Länder-Mapping für bessere Darstellung
+            country_names = {
+                "49": {"name": "Deutschland", "code": "DE"},
+                "1": {"name": "USA", "code": "US"},
+                "7": {"name": "Russland", "code": "RU"},
+                "380": {"name": "Ukraine", "code": "UA"},
+                "48": {"name": "Polen", "code": "PL"},
+                "84": {"name": "Vietnam", "code": "VN"}
+            }
+            
+            # Formatiere Daten
+            countries_list = []
+            if isinstance(tariffs, dict):
+                for country_code, services in tariffs.items():
+                    country_info = country_names.get(str(country_code), {"name": f"Land {country_code}", "code": country_code})
+                    telegram_price = None
+                    whatsapp_price = None
+                    
+                    if isinstance(services, dict):
+                        telegram_price = services.get("telegram")
+                        whatsapp_price = services.get("whatsapp")
+                    elif isinstance(services, list):
+                        for service in services:
+                            if isinstance(service, dict):
+                                if service.get("service") == "telegram":
+                                    telegram_price = service.get("price")
+                                elif service.get("service") == "whatsapp":
+                                    whatsapp_price = service.get("price")
+                    
+                    countries_list.append({
+                        "country_code": str(country_code),
+                        "country_name": country_info["name"],
+                        "iso_code": country_info["code"],
+                        "telegram_price": telegram_price,
+                        "whatsapp_price": whatsapp_price
+                    })
+            
+            return {
+                "success": True,
+                "provider": "onlinesim",
+                "countries": countries_list
+            }
+        else:
+            # Für andere Provider: Standard-Länderliste
+            return {
+                "success": True,
+                "provider": provider,
+                "countries": [
+                    {"country_code": "49", "country_name": "Deutschland", "iso_code": "DE", "telegram_price": None, "whatsapp_price": None},
+                    {"country_code": "1", "country_name": "USA", "iso_code": "US", "telegram_price": None, "whatsapp_price": None},
+                    {"country_code": "7", "country_name": "Russland", "iso_code": "RU", "telegram_price": None, "whatsapp_price": None},
+                    {"country_code": "380", "country_name": "Ukraine", "iso_code": "UA", "telegram_price": None, "whatsapp_price": None},
+                    {"country_code": "48", "country_name": "Polen", "iso_code": "PL", "telegram_price": None, "whatsapp_price": None},
+                    {"country_code": "84", "country_name": "Vietnam", "iso_code": "VN", "telegram_price": None, "whatsapp_price": None}
+                ]
+            }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Fehler beim Abrufen der Länder/Preise: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Fehler beim Abrufen der Länder/Preise: {str(e)}")
+
+class CreateSingleAccountRequest(BaseModel):
+    provider: str = "onlinesim"
+    country: str
+    service: str = "telegram"
+
+@app.post("/api/accounts/create-single", response_model=dict)
+async def create_single_account(
+    request: CreateSingleAccountRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Erstellt einen einzelnen Account mit automatischem Nummernkauf"""
+    # Prüfe ob Feature verfügbar ist
+    if not check_subscription(current_user, "auto_number_purchase"):
+        raise HTTPException(
+            status_code=403,
+            detail="Automatischer Nummernkauf ist in deinem Paket nicht enthalten. Bitte upgraden."
+        )
+    
+    # Prüfe Account-Limit
+    account_count = db.query(Account).filter(Account.user_id == current_user.id).count()
+    if not check_account_limit(current_user, account_count):
+        raise HTTPException(
+            status_code=403,
+            detail=f"Account-Limit erreicht. Maximal {current_user.subscription.max_accounts if current_user.subscription else 1} Accounts erlaubt."
+        )
+    
+    # Lade Provider
+    if request.provider == "onlinesim":
+        setting = db.query(SystemSettings).filter(SystemSettings.key == "onlinesim_api_key").first()
+        provider_api_key = setting.value if setting else os.getenv("ONLINESIM_API_KEY")
+        if not provider_api_key:
+            raise HTTPException(status_code=500, detail="OnlineSim API Key nicht konfiguriert")
+        provider = OnlineSimProvider(provider_api_key)
+    else:
+        raise HTTPException(status_code=400, detail=f"Provider {request.provider} für einzelne Account-Erstellung noch nicht unterstützt")
+    
+    # Kaufe Nummer
+    buy_result = await provider.buy_number(
+        country=request.country,
+        service=request.service,
+        operator=None
+    )
+    
+    if not buy_result.get("success"):
+        error_msg = buy_result.get('error', 'Unbekannter Fehler')
+        is_retryable = buy_result.get('retryable', False)
+        
+        if "TRY_AGAIN_LATER" in error_msg.upper():
+            error_msg = f"Rate-Limit erreicht. OnlineSim.io hat temporär keine Nummern verfügbar. Bitte in ein paar Minuten erneut versuchen."
+        elif "NO_NUMBERS" in error_msg.upper():
+            error_msg = f"Keine Nummern verfügbar für {request.country}. Bitte später erneut versuchen oder ein anderes Land wählen."
+        elif "NO_BALANCE" in error_msg.upper():
+            error_msg = f"Nicht genug Guthaben bei OnlineSim.io. Bitte Guthaben aufladen."
+        
+        status_code = 429 if is_retryable else 400
+        raise HTTPException(status_code=status_code, detail=f"Fehler beim Kauf der Nummer: {error_msg}")
+    
+    phone_number = buy_result.get("phone_number")
+    purchase_id = str(buy_result.get("purchase_id"))
+    cost = buy_result.get("cost")
+    
+    # Speichere Kauf in Datenbank
+    purchase = PhoneNumberPurchase(
+        user_id=current_user.id,
+        provider=request.provider,
+        phone_number=phone_number,
+        country=request.country,
+        service=request.service,
+        purchase_id=purchase_id,
+        cost=cost,
+        status="pending",
+        expires_at=buy_result.get("expires_at")
+    )
+    db.add(purchase)
+    db.commit()
+    db.refresh(purchase)
+    
+    # Warte auf SMS-Code
+    sms_code = None
+    max_wait = 300  # 5 Minuten
+    wait_time = 0
+    while wait_time < max_wait:
+        await asyncio.sleep(10)
+        wait_time += 10
+        
+        code_result = await provider.get_sms_code(purchase_id)
+        if code_result.get("success") and code_result.get("sms_code"):
+            sms_code = code_result.get("sms_code")
+            purchase.sms_code = sms_code
+            purchase.status = "active"
+            db.commit()
+            break
+    
+    if not sms_code:
+        return {
+            "success": False,
+            "purchase_id": purchase.id,
+            "phone_number": phone_number,
+            "status": "sms_timeout",
+            "message": "SMS-Code nicht innerhalb der Wartezeit erhalten. Bitte manuell prüfen."
+        }
+    
+    # Erstelle Telegram-Account
+    try:
+        api_id = os.getenv('TELEGRAM_API_ID')
+        api_hash = os.getenv('TELEGRAM_API_HASH')
+        
+        if not api_id or not api_hash:
+            raise HTTPException(
+                status_code=500,
+                detail="TELEGRAM_API_ID und TELEGRAM_API_HASH müssen in Umgebungsvariablen gesetzt sein"
+            )
+        
+        account_name = f"Auto_{phone_number.replace('+', '').replace(' ', '')}"
+        session_name = f"sessions/auto_{phone_number.replace('+', '').replace(' ', '').replace('-', '')}"
+        
+        db_account = Account(
+            user_id=current_user.id,
+            name=account_name,
+            account_type="user",
+            api_id=api_id,
+            api_hash=api_hash,
+            phone_number=phone_number,
+            session_name=session_name
+        )
+        db.add(db_account)
+        db.commit()
+        db.refresh(db_account)
+        
+        # Verbinde Account
+        result = await account_manager.add_account(
+            account_id=db_account.id,
+            api_id=api_id,
+            api_hash=api_hash,
+            session_name=session_name,
+            phone_number=phone_number,
+            code=sms_code
+        )
+        
+        if result.get("status") == "connected":
+            purchase.status = "completed"
+            purchase.account_id = db_account.id
+            db.commit()
+            
+            return {
+                "success": True,
+                "account_id": db_account.id,
+                "phone_number": phone_number,
+                "cost": cost,
+                "status": "completed",
+                "message": "✅ Account erfolgreich erstellt und verbunden!"
+            }
+        else:
+            return {
+                "success": False,
+                "account_id": db_account.id,
+                "phone_number": phone_number,
+                "status": result.get("status"),
+                "message": result.get("message", "Account erstellt, aber Verbindung fehlgeschlagen")
+            }
+            
+    except Exception as e:
+        logger.error(f"Fehler beim Erstellen des Accounts: {str(e)}", exc_info=True)
+        return {
+            "success": False,
+            "purchase_id": purchase.id,
+            "phone_number": phone_number,
+            "status": "error",
+            "error": f"Account-Erstellung fehlgeschlagen: {str(e)}"
+        }
+
+@app.post("/api/accounts/auto-create", response_model=dict)
+async def auto_create_accounts(
+    request: AutoCreateAccountsRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Erstellt automatisch mehrere Telegram-Accounts basierend auf verfügbarem Guthaben.
+    Prüft Guthaben, kauft Nummern, erstellt Accounts und speichert alles (ID, Nummer, Hash, API).
+    """
+    # Prüfe ob Feature verfügbar ist
+    if not check_subscription(current_user, "auto_number_purchase"):
+        raise HTTPException(
+            status_code=403,
+            detail="Automatischer Nummernkauf ist in deinem Paket nicht enthalten. Bitte upgraden."
+        )
+    
+    # Lade API Key aus Umgebungsvariablen oder SystemSettings
+    provider_api_key = None
+    
+    # Provider initialisieren
+    if request.provider == "5sim":
+        setting = db.query(SystemSettings).filter(SystemSettings.key == "fivesim_api_key").first()
+        provider_api_key = setting.value if setting else os.getenv("FIVESIM_API_KEY")
+        if not provider_api_key:
+            raise HTTPException(status_code=500, detail="5sim API Key nicht konfiguriert")
+        provider = FiveSimProvider(provider_api_key)
+    elif request.provider == "sms-activate":
+        setting = db.query(SystemSettings).filter(SystemSettings.key == "sms_activate_api_key").first()
+        provider_api_key = setting.value if setting else os.getenv("SMS_ACTIVATE_API_KEY")
+        if not provider_api_key:
+            raise HTTPException(status_code=500, detail="SMS-Activate API Key nicht konfiguriert")
+        provider = SMSActivateProvider(provider_api_key)
+    elif request.provider == "sms-manager":
+        setting = db.query(SystemSettings).filter(SystemSettings.key == "sms_manager_api_key").first()
+        provider_api_key = setting.value if setting else os.getenv("SMS_MANAGER_API_KEY")
+        if not provider_api_key:
+            raise HTTPException(status_code=500, detail="SMS-Manager API Key nicht konfiguriert")
+        provider = SMSManagerProvider(provider_api_key)
+    elif request.provider == "getsmscode":
+        setting = db.query(SystemSettings).filter(SystemSettings.key == "getsmscode_api_key").first()
+        provider_api_key = setting.value if setting else os.getenv("GETSMSCODE_API_KEY")
+        if not provider_api_key:
+            raise HTTPException(status_code=500, detail="GetSMSCode API Key nicht konfiguriert")
+        provider = GetSMSCodeProvider(provider_api_key)
+    elif request.provider == "onlinesim":
+        setting = db.query(SystemSettings).filter(SystemSettings.key == "onlinesim_api_key").first()
+        provider_api_key = setting.value if setting else os.getenv("ONLINESIM_API_KEY")
+        if not provider_api_key:
+            raise HTTPException(status_code=500, detail="OnlineSim API Key nicht konfiguriert")
+        provider = OnlineSimProvider(provider_api_key)
+    else:
+        raise HTTPException(status_code=400, detail=f"Unbekannter Provider: {request.provider}")
+    
+    # Prüfe Guthaben
+    balance_result = await provider.get_balance()
+    if not balance_result.get("success"):
+        raise HTTPException(
+            status_code=500,
+            detail=f"Fehler beim Abrufen des Guthabens: {balance_result.get('error', 'Unbekannter Fehler')}"
+        )
+    
+    balance = balance_result.get("balance", 0)
+    currency = balance_result.get("currency", "USD")
+    
+    if request.min_balance and balance < request.min_balance:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Nicht genug Guthaben. Verfügbar: {balance} {currency}, Mindest: {request.min_balance} {currency}"
+        )
+    
+    # Lade API Credentials
+    api_id = os.getenv('TELEGRAM_API_ID')
+    api_hash = os.getenv('TELEGRAM_API_HASH')
+    
+    if not api_id or not api_hash:
+        raise HTTPException(
+            status_code=500,
+            detail="TELEGRAM_API_ID und TELEGRAM_API_HASH müssen in Umgebungsvariablen gesetzt sein"
+        )
+    
+    # Prüfe Account-Limit
+    account_count = db.query(Account).filter(Account.user_id == current_user.id).count()
+    max_allowed = current_user.subscription.max_accounts if current_user.subscription else 1
+    
+    # Berechne wie viele Accounts erstellt werden können
+    accounts_to_create = min(
+        request.max_accounts,
+        max_allowed - account_count
+    )
+    
+    if accounts_to_create <= 0:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Account-Limit erreicht. Maximal {max_allowed} Accounts erlaubt."
+        )
+    
+    results = {
+        "success": True,
+        "requested": request.max_accounts,
+        "created": 0,
+        "failed": 0,
+        "accounts": [],
+        "errors": [],
+        "balance_before": balance,
+        "balance_after": None
+    }
+    
+    # Erstelle Accounts
+    for i in range(accounts_to_create):
+        try:
+            # Prüfe Account-Limit vor jedem Kauf
+            current_count = db.query(Account).filter(Account.user_id == current_user.id).count()
+            if current_count >= max_allowed:
+                results["errors"].append(f"Account-Limit erreicht nach {i} Accounts")
+                break
+            
+            # Warte zwischen Käufen, um Rate-Limiting zu vermeiden
+            if i > 0:
+                await asyncio.sleep(3)  # 3 Sekunden zwischen Käufen
+            
+            # Kaufe Nummer
+            buy_result = await provider.buy_number(
+                country=request.country,
+                service=request.service,
+                operator=None
+            )
+            
+            if not buy_result.get("success"):
+                results["failed"] += 1
+                error_msg = buy_result.get('error', 'Unbekannter Fehler')
+                is_retryable = buy_result.get('retryable', False)
+                
+                # Verbesserte Fehlermeldung
+                if "TRY_AGAIN_LATER" in error_msg.upper():
+                    error_msg = f"Rate-Limit erreicht. Bitte später erneut versuchen. (Original: {error_msg})"
+                elif "NO_NUMBERS" in error_msg.upper():
+                    error_msg = f"Keine Nummern verfügbar für {request.country}. (Original: {error_msg})"
+                elif "NO_BALANCE" in error_msg.upper():
+                    error_msg = f"Nicht genug Guthaben bei OnlineSim.io. (Original: {error_msg})"
+                
+                results["errors"].append(f"Kauf {i+1} fehlgeschlagen: {error_msg}")
+                
+                # Wenn retry-fähig, warte länger vor nächstem Versuch
+                if is_retryable and i < accounts_to_create - 1:
+                    await asyncio.sleep(10)  # Warte 10 Sekunden vor nächstem Kauf
+                
+                continue
+            
+            phone_number = buy_result.get("phone_number")
+            purchase_id = str(buy_result.get("purchase_id"))
+            
+            # Speichere Kauf in Datenbank
+            purchase = PhoneNumberPurchase(
+                user_id=current_user.id,
+                provider=request.provider,
+                phone_number=phone_number,
+                country=request.country,
+                service=request.service,
+                purchase_id=purchase_id,
+                cost=buy_result.get("cost"),
+                status="pending",
+                expires_at=buy_result.get("expires_at")
+            )
+            db.add(purchase)
+            db.commit()
+            db.refresh(purchase)
+            
+            # Warte auf SMS-Code (mit Timeout)
+            sms_code = None
+            max_wait = 300  # 5 Minuten
+            wait_time = 0
+            while wait_time < max_wait:
+                await asyncio.sleep(10)  # Warte 10 Sekunden
+                wait_time += 10
+                
+                code_result = await provider.get_sms_code(purchase_id)
+                if code_result.get("success") and code_result.get("sms_code"):
+                    sms_code = code_result.get("sms_code")
+                    purchase.sms_code = sms_code
+                    purchase.status = "active"
+                    db.commit()
+                    break
+            
+            if not sms_code:
+                results["failed"] += 1
+                results["errors"].append(f"Account {i+1} ({phone_number}): SMS-Code nicht erhalten")
+                purchase.status = "timeout"
+                db.commit()
+                continue
+            
+            # Erstelle Account-Name
+            account_name = f"Auto_{phone_number.replace('+', '').replace(' ', '')}"
+            
+            # Erstelle Session-Name
+            session_name = f"sessions/auto_{phone_number.replace('+', '').replace(' ', '').replace('-', '')}"
+            
+            # Erstelle Account in Datenbank
+            db_account = Account(
+                user_id=current_user.id,
+                name=account_name,
+                account_type="user",
+                api_id=api_id,
+                api_hash=api_hash,
+                phone_number=phone_number,
+                session_name=session_name
+            )
+            db.add(db_account)
+            db.commit()
+            db.refresh(db_account)
+            
+            # Verbinde Account mit Telethon
+            proxy_config = None
+            if db_account.proxy_id:
+                proxy = db.query(Proxy).filter(Proxy.id == db_account.proxy_id).first()
+                if proxy:
+                    proxy_config = {
+                        "proxy_type": proxy.proxy_type,
+                        "host": proxy.host,
+                        "port": proxy.port,
+                        "username": proxy.username,
+                        "password": proxy.password,
+                        "secret": proxy.secret
+                    }
+            
+            # Verbinde Account mit SMS-Code
+            result = await account_manager.add_account(
+                account_id=db_account.id,
+                api_id=api_id,
+                api_hash=api_hash,
+                session_name=session_name,
+                phone_number=phone_number,
+                code=sms_code,
+                proxy_config=proxy_config
+            )
+            
+            # Verknüpfe Purchase mit Account
+            purchase.account_id = db_account.id
+            purchase.status = "used"
+            purchase.used_at = datetime.utcnow()
+            db.commit()
+            
+            if result.get("status") == "connected":
+                # Hole Account-Info für Rückgabe
+                account_info = result.get("info", {})
+                results["created"] += 1
+                results["accounts"].append({
+                    "account_id": db_account.id,
+                    "name": account_name,
+                    "phone_number": phone_number,
+                    "api_id": api_id,
+                    "api_hash": api_hash,
+                    "session_name": session_name,
+                    "status": "connected",
+                    "user_id": account_info.get("id"),
+                    "username": account_info.get("username"),
+                    "first_name": account_info.get("first_name"),
+                    "last_name": account_info.get("last_name")
+                })
+            else:
+                results["failed"] += 1
+                results["errors"].append(f"Account {i+1} ({phone_number}): Verbindung fehlgeschlagen - {result.get('error', 'Unbekannter Fehler')}")
+            
+            # Kurze Pause zwischen Accounts
+            await asyncio.sleep(2)
+            
+        except Exception as e:
+            results["failed"] += 1
+            error_msg = str(e)
+            results["errors"].append(f"Account {i+1}: {error_msg}")
+            logger.error(f"Fehler beim automatischen Erstellen von Account {i+1}: {error_msg}", exc_info=True)
+            continue
+    
+    # Prüfe finales Guthaben
+    final_balance_result = await provider.get_balance()
+    if final_balance_result.get("success"):
+        results["balance_after"] = final_balance_result.get("balance", 0)
+    
+    return results
 
 # Subscription/Paket Endpoints
 @app.get("/api/subscriptions/plans", response_model=List[dict])
@@ -1792,14 +2821,23 @@ async def scrape_group_members(
     if account.account_type != "user":
         raise HTTPException(status_code=400, detail="Nur User-Accounts können scrapen")
     
-    group = db.query(Group).filter(Group.id == request.group_id).first()
-    if not group:
-        raise HTTPException(status_code=404, detail="Gruppe nicht gefunden")
+    # Bestimme group_entity
+    group_entity = None
+    if request.group_entity:
+        group_entity = request.group_entity
+    elif request.group_id:
+        # Lade Gruppe aus Datenbank
+        group = db.query(Group).filter(Group.id == request.group_id).first()
+        if not group:
+            raise HTTPException(status_code=404, detail="Gruppe nicht gefunden")
+        group_entity = group.chat_id
+    else:
+        raise HTTPException(status_code=400, detail="Bitte group_id oder group_entity angeben")
     
     # Scrape Mitglieder
     members = await account_manager.scrape_group_members(
         account_id=request.account_id,
-        group_entity=group.chat_id,
+        group_entity=group_entity,
         limit=request.limit
     )
     
@@ -1867,7 +2905,12 @@ async def invite_users_to_group(
     db: Session = Depends(get_db)
 ):
     """
-    Lädt User zu einer Gruppe ein (Account muss Admin sein)
+    Lädt User zu einer Gruppe ein
+    
+    Args:
+        - user_ids: Liste von User-IDs oder Usernames (optional)
+        - usernames: Liste von Usernamen (optional, wird bevorzugt wenn gesetzt)
+        - invite_method: "admin" (direkte Einladung) oder "invite_link" (Link erstellen und senden)
     
     ⚠️ WARNUNG: Masseneinladungen können gegen Telegram Nutzungsbedingungen verstoßen!
     """
@@ -1878,15 +2921,48 @@ async def invite_users_to_group(
     if account.account_type != "user":
         raise HTTPException(status_code=400, detail="Nur User-Accounts können einladen")
     
-    group = db.query(Group).filter(Group.id == request.group_id).first()
-    if not group:
-        raise HTTPException(status_code=404, detail="Gruppe nicht gefunden")
+    # Bestimme group_entity
+    group_entity = None
+    if request.group_entity:
+        group_entity = request.group_entity
+    elif request.group_id:
+        group = db.query(Group).filter(Group.id == request.group_id).first()
+        if not group:
+            raise HTTPException(status_code=404, detail="Gruppe nicht gefunden")
+        group_entity = group.chat_id
+    else:
+        raise HTTPException(status_code=400, detail="Bitte group_id oder group_entity angeben")
+    
+    # Verarbeite Usernamen-Liste
+    user_ids = []
+    if request.usernames:
+        # Bereinige Usernamen (entferne @, Leerzeichen)
+        for username in request.usernames:
+            username = username.strip()
+            if username:
+                # Entferne @ falls vorhanden
+                if username.startswith("@"):
+                    username = username[1:]
+                # Füge @ hinzu für Telegram
+                user_ids.append(f"@{username}")
+    elif request.user_ids:
+        user_ids = request.user_ids
+    else:
+        raise HTTPException(status_code=400, detail="Bitte user_ids oder usernames angeben")
+    
+    if not user_ids:
+        raise HTTPException(status_code=400, detail="Keine gültigen User-IDs oder Usernamen gefunden")
+    
+    # Validiere invite_method
+    if request.invite_method not in ["admin", "invite_link"]:
+        raise HTTPException(status_code=400, detail="invite_method muss 'admin' oder 'invite_link' sein")
     
     result = await account_manager.invite_users_to_group(
         account_id=request.account_id,
-        group_entity=group.chat_id,
-        user_ids=request.user_ids,
-        delay=request.delay
+        group_entity=group_entity,
+        user_ids=user_ids,
+        delay=request.delay,
+        invite_method=request.invite_method
     )
     
     return result
@@ -1990,17 +3066,96 @@ async def get_group_messages(
     if account.account_type != "user":
         raise HTTPException(status_code=400, detail="Nur User-Accounts können Nachrichten abrufen")
     
-    group = db.query(Group).filter(Group.id == request.group_id).first()
-    if not group:
-        raise HTTPException(status_code=404, detail="Gruppe nicht gefunden")
+    # Prüfe ob group_id oder manual_group_entity gesetzt ist
+    group_entity = None
+    if request.group_id:
+        group = db.query(Group).filter(Group.id == request.group_id).first()
+        if not group:
+            raise HTTPException(status_code=404, detail="Gruppe nicht gefunden")
+        group_entity = group.chat_id
+    elif hasattr(request, 'manual_group_entity') and request.manual_group_entity:
+        group_entity = request.manual_group_entity
+    else:
+        raise HTTPException(status_code=400, detail="Bitte Gruppe auswählen oder manuell eingeben")
     
-    messages = await account_manager.get_group_messages(
+    result = await account_manager.get_group_messages(
         account_id=request.account_id,
-        group_entity=group.chat_id,
-        limit=request.limit
+        group_entity=group_entity,
+        limit=request.limit,
+        auto_join=True  # Automatisch beitreten, wenn nicht Mitglied
     )
     
-    return messages
+    # Prüfe ob Fehler aufgetreten ist
+    if result.get("error"):
+        raise HTTPException(
+            status_code=400,
+            detail=result.get("error")
+        )
+    
+    return result.get("messages", [])
+
+@app.post("/api/messages/forward-by-id", response_model=dict)
+async def forward_message_by_id(
+    request: ForwardMessageByIdRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Leitet eine einzelne Nachricht per Message-ID weiter
+    
+    Args:
+        request: ForwardMessageByIdRequest mit Message-ID und Ziel-Gruppen
+    """
+    account = db.query(Account).filter(Account.id == request.account_id).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Account nicht gefunden")
+    
+    if account.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Account gehört nicht zum aktuellen Benutzer")
+    
+    if account.account_type != "user":
+        raise HTTPException(status_code=400, detail="Nur User-Accounts können weiterleiten")
+    
+    # Prüfe ob group_id oder source_group_entity gesetzt ist
+    source_group_entity = None
+    if request.source_group_entity:
+        source_group_entity = request.source_group_entity
+    elif request.source_group_id:
+        source_group = db.query(Group).filter(Group.id == request.source_group_id).first()
+        if not source_group:
+            raise HTTPException(status_code=404, detail="Quell-Gruppe nicht gefunden")
+        source_group_entity = source_group.chat_id
+    else:
+        raise HTTPException(status_code=400, detail="Bitte Quell-Gruppe angeben (ID oder manuell)")
+    
+    # Lade Ziel-Gruppen
+    target_groups = db.query(Group).filter(Group.id.in_(request.target_group_ids)).all()
+    if len(target_groups) != len(request.target_group_ids):
+        raise HTTPException(status_code=404, detail="Eine oder mehrere Ziel-Gruppen nicht gefunden")
+    
+    target_chat_ids = [g.chat_id for g in target_groups]
+    
+    # Konvertiere message_id zu int (kann sehr groß sein, daher als String empfangen)
+    try:
+        message_id_int = int(request.message_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Ungültige Message-ID: {request.message_id}")
+    
+    result = await account_manager.forward_message_by_id(
+        account_id=request.account_id,
+        source_group=source_group_entity,
+        message_id=message_id_int,
+        target_groups=target_chat_ids,
+        delay=request.delay
+    )
+    
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=400,
+            detail=result.get("error", "Fehler beim Weiterleiten")
+        )
+    
+    return result
 
 @app.post("/api/messages/forward", response_model=dict)
 async def forward_messages(
@@ -2375,6 +3530,154 @@ async def delete_message_template(template_id: int, db: Session = Depends(get_db
     
     return {"success": True}
 
+@app.post("/api/message-templates/from-message", response_model=dict)
+async def create_template_from_message(
+    request: CreateTemplateFromMessageRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Erstellt eine Nachrichtenvorlage aus einer Nachricht per Message ID
+    
+    Unterstützt Premium Emotes und alle Nachrichtentypen (Text, Media, etc.)
+    """
+    account = db.query(Account).filter(Account.id == request.account_id).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Account nicht gefunden")
+    
+    if account.account_type != "user":
+        raise HTTPException(status_code=400, detail="Nur User-Accounts können Nachrichten laden")
+    
+    # Lade Nachricht
+    try:
+        # Konvertiere message_id zu int
+        message_id = int(request.message_id)
+        
+        # Lade Nachricht über account_manager
+        # Verwende die gleiche Logik wie forward_message_by_id
+        if request.account_id not in account_manager.clients:
+            raise HTTPException(status_code=400, detail="Account nicht verbunden")
+        
+        client = account_manager.clients[request.account_id]
+        
+        # Lade Source Entity
+        try:
+            source_entity = await client.get_entity(request.source_group)
+        except Exception as e:
+            # Versuche als Chat-ID zu konvertieren
+            try:
+                chat_id_int = int(request.source_group)
+                source_entity = await client.get_entity(chat_id_int)
+            except:
+                raise HTTPException(status_code=404, detail=f"Quell-Gruppe nicht gefunden: {request.source_group}")
+        
+        # Lade Nachricht
+        try:
+            result = await client.get_messages(source_entity, ids=message_id)
+            
+            # Prüfe ob es eine Liste ist
+            if isinstance(result, list):
+                if len(result) > 0:
+                    message = result[0]
+                else:
+                    raise HTTPException(status_code=404, detail=f"Nachricht mit ID {message_id} nicht gefunden")
+            else:
+                message = result
+            
+            if not message:
+                # Versuche über iter_messages
+                found = False
+                async for msg in client.iter_messages(source_entity, limit=10000):
+                    if msg.id == message_id:
+                        message = msg
+                        found = True
+                        break
+                
+                if not found:
+                    raise HTTPException(status_code=404, detail=f"Nachricht mit ID {message_id} nicht gefunden")
+        
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Fehler beim Laden der Nachricht: {str(e)}")
+        
+        # Extrahiere Nachrichtentext
+        # Unterstützt Premium Emotes (werden als Unicode-Zeichen gespeichert)
+        message_text = ""
+        
+        # Telethon Message-Objekte haben verschiedene Attribute für Text
+        # Wir versuchen alle möglichen Quellen, um Premium Emotes zu erhalten
+        
+        # 1. Versuche raw_text (enthält alle Zeichen inkl. Premium Emotes)
+        if hasattr(message, 'raw_text') and message.raw_text:
+            message_text = message.raw_text
+        # 2. Versuche message (Standard-Text)
+        elif hasattr(message, 'message') and message.message:
+            message_text = message.message
+        # 3. Versuche text (Alternative)
+        elif hasattr(message, 'text') and message.text:
+            message_text = message.text
+        # 4. Versuche Text aus Entities zu extrahieren (für komplexe Nachrichten)
+        elif hasattr(message, 'entities') and message.entities and hasattr(message, 'message'):
+            # Verwende message, da entities nur Formatierungen enthalten
+            message_text = message.message or ""
+        
+        # Falls keine Text-Nachricht, erstelle Beschreibung
+        if not message_text or message_text.strip() == "":
+            # Erstelle Beschreibung basierend auf Nachrichtentyp
+            if hasattr(message, 'media') and message.media:
+                media_type = message.media.__class__.__name__
+                # Versuche zusätzliche Info zu extrahieren
+                if hasattr(message.media, 'photo'):
+                    message_text = "[Foto]"
+                elif hasattr(message.media, 'document'):
+                    if hasattr(message.media.document, 'mime_type'):
+                        if 'image' in message.media.document.mime_type:
+                            message_text = "[Bild]"
+                        elif 'video' in message.media.document.mime_type:
+                            message_text = "[Video]"
+                        else:
+                            message_text = f"[Datei: {message.media.document.mime_type}]"
+                    else:
+                        message_text = "[Datei]"
+                else:
+                    message_text = f"[Media: {media_type}]"
+            else:
+                message_text = "[Nachricht ohne Text]"
+        
+        # Stelle sicher, dass Premium Emotes erhalten bleiben
+        # raw_text sollte bereits alle Unicode-Zeichen enthalten
+        # Falls nicht, verwende message (sollte auch Premium Emotes enthalten)
+        
+        # Erstelle Vorlage
+        db_template = MessageTemplate(
+            name=request.template_name,
+            message=message_text,  # Enthält Premium Emotes als Unicode
+            category=request.category,
+            tags=json.dumps(request.tags) if request.tags else None
+        )
+        db.add(db_template)
+        db.commit()
+        db.refresh(db_template)
+        
+        return {
+            "success": True,
+            "id": db_template.id,
+            "name": db_template.name,
+            "message": db_template.message,
+            "category": db_template.category,
+            "tags": json.loads(db_template.tags) if db_template.tags else [],
+            "usage_count": db_template.usage_count,
+            "is_active": db_template.is_active,
+            "created_at": db_template.created_at.isoformat() if db_template.created_at else None,
+            "message_preview": message_text[:200] + "..." if len(message_text) > 200 else message_text
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Fehler beim Erstellen der Vorlage aus Nachricht: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Fehler beim Erstellen der Vorlage: {str(e)}")
+
 # Sent Messages History Endpoints
 @app.get("/api/sent-messages", response_model=List[dict])
 async def list_sent_messages(
@@ -2721,11 +4024,28 @@ async def create_bot_via_account(
     if not account_info:
         raise HTTPException(status_code=400, detail="Account nicht verbunden. Bitte zuerst verbinden.")
     
+    # Validiere und bereinige Bot-Username
+    bot_username = request.bot_username.lower()
+    # Entferne ungültige Zeichen (nur a-z, 0-9, _ erlaubt)
+    bot_username = ''.join(c for c in bot_username if c.isalnum() or c == '_')
+    # Stelle sicher, dass Username auf "_bot" endet (nicht nur "bot")
+    if not bot_username.endswith("_bot"):
+        # Entferne "bot" oder "_bot" falls bereits vorhanden
+        bot_username = bot_username.rstrip("_bot").rstrip("bot")
+        bot_username = bot_username + "_bot"
+    # Stelle sicher, dass Username zwischen 5 und 32 Zeichen lang ist
+    if len(bot_username) < 5:
+        padding_needed = 5 - len(bot_username)
+        bot_username = bot_username[:-4] + "0" * padding_needed + "_bot"
+    elif len(bot_username) > 32:
+        max_base_length = 28  # 32 - 4 ("_bot")
+        bot_username = bot_username[:max_base_length] + "_bot"
+    
     # Erstelle Bot über BotFather
     result = await account_manager.create_bot_via_botfather(
         account_id=account_id,
         bot_name=request.bot_name,
-        bot_username=request.bot_username
+        bot_username=bot_username
     )
     
     if not result.get("success"):
@@ -2763,6 +4083,265 @@ async def create_bot_via_account(
         "bot_info": bot_result.get("info"),
         "message": "Bot erfolgreich erstellt und verbunden"
     }
+
+@app.post("/api/accounts/{account_id}/bulk-create-bots", response_model=dict)
+async def bulk_create_bots_via_account(
+    account_id: int,
+    request: BulkCreateBotsViaAccountRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Erstellt mehrere Bots über einen User-Account via BotFather mit automatisch generierten Namen
+    
+    Args:
+        account_id: ID des User-Accounts, der die Bots erstellen soll
+        request: Anzahl, Name-Präfix, Username-Präfix, Delay
+    
+    Returns:
+        Dict mit Statistiken und erstellten Bots
+    """
+    from telethon.errors import FloodWaitError
+    
+    # Prüfe ob Account existiert und User-Account ist
+    account = db.query(Account).filter(Account.id == account_id).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Account nicht gefunden")
+    
+    # Prüfe ob Account dem aktuellen User gehört
+    if account.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Account gehört nicht zum aktuellen Benutzer")
+    
+    if account.account_type != "user":
+        raise HTTPException(status_code=400, detail="Nur User-Accounts können Bots erstellen")
+    
+    # Prüfe ob Account verbunden ist
+    account_info = await account_manager.get_account_info(account_id)
+    if not account_info:
+        raise HTTPException(status_code=400, detail="Account nicht verbunden. Bitte zuerst verbinden.")
+    
+    # Prüfe Account-Limit
+    account_count = db.query(Account).filter(Account.user_id == current_user.id).count()
+    if not check_account_limit(current_user, account_count + request.count):
+        raise HTTPException(
+            status_code=403,
+            detail=f"Account-Limit würde überschritten. Maximal {current_user.subscription.max_accounts if current_user.subscription else 1} Accounts erlaubt."
+        )
+    
+    results = {
+        "total": request.count,
+        "success": 0,
+        "failed": 0,
+        "bots": [],
+        "errors": []
+    }
+    
+    for i in range(1, request.count + 1):
+        # Generiere automatische Namen
+        bot_name = f"{request.name_prefix} {i}"
+        
+        # Generiere Bot-Username gemäß Telegram-Richtlinien:
+        # - Muss auf "_bot" enden
+        # - Nur a-z, 0-9, _ erlaubt
+        # - 5-32 Zeichen lang
+        # - Eindeutig (mit fortlaufender Nummer)
+        
+        # Bereinige Username-Präfix: nur Kleinbuchstaben, Zahlen, Unterstriche
+        clean_prefix = ''.join(c for c in request.username_prefix.lower() if c.isalnum() or c == '_')
+        if not clean_prefix:
+            clean_prefix = "bot"
+        
+        # Erstelle Username: prefix_i (mit fortlaufender Nummer statt Timestamp)
+        # Format: prefix_i_bot
+        username_base = f"{clean_prefix}_{i}"
+        
+        # Stelle sicher, dass Username auf "_bot" endet (nicht nur "bot")
+        if not username_base.endswith("_bot"):
+            # Entferne "bot" oder "_bot" falls bereits vorhanden
+            username_base = username_base.rstrip("_bot").rstrip("bot")
+            # Füge "_bot" hinzu
+            bot_username = username_base + "_bot"
+        else:
+            bot_username = username_base
+        
+        # Kürze auf max 32 Zeichen (Telegram Limit)
+        if len(bot_username) > 32:
+            # Kürze den Base-Teil, behalte "_bot" Endung
+            max_base_length = 28  # 32 - 4 ("_bot")
+            bot_username = bot_username[:max_base_length] + "_bot"
+        
+        # Stelle sicher, dass Username mindestens 5 Zeichen hat
+        if len(bot_username) < 5:
+            # Füge Ziffern hinzu falls zu kurz
+            padding = "0" * (5 - len(bot_username))
+            bot_username = bot_username[:-4] + padding + "_bot"  # Füge vor "_bot" ein
+        
+        # Finale Validierung: nur a-z, 0-9, _
+        bot_username = ''.join(c for c in bot_username if c.isalnum() or c == '_')
+        # Stelle sicher, dass Username auf "_bot" endet (nicht nur "bot")
+        if not bot_username.endswith("_bot"):
+            # Entferne "bot" oder "_bot" falls bereits vorhanden
+            bot_username = bot_username.rstrip("_bot").rstrip("bot")
+            bot_username = bot_username + "_bot"
+        
+        try:
+            # Erstelle Bot über BotFather
+            result = await account_manager.create_bot_via_botfather(
+                account_id=account_id,
+                bot_name=bot_name,
+                bot_username=bot_username
+            )
+            
+            if result.get("success") and result.get("bot_token"):
+                bot_token = result.get("bot_token")
+                
+                # Erstelle Bot-Account in Datenbank
+                bot_account = Account(
+                    user_id=current_user.id,
+                    name=bot_name,
+                    account_type="bot",
+                    bot_token=bot_token
+                )
+                db.add(bot_account)
+                db.commit()
+                db.refresh(bot_account)
+                
+                # Verbinde Bot
+                bot_result = await bot_manager.add_bot(
+                    bot_id=bot_account.id,
+                    bot_token=bot_token
+                )
+                
+                if bot_result.get("status") == "connected":
+                    results["success"] += 1
+                    results["bots"].append({
+                        "id": bot_account.id,
+                        "name": bot_name,
+                        "username": bot_username,
+                        "token": bot_token[:30] + "..." if len(bot_token) > 30 else bot_token,
+                        "info": bot_result.get("info")
+                    })
+                else:
+                    results["failed"] += 1
+                    results["errors"].append({
+                        "bot": bot_name,
+                        "error": f"Verbindung fehlgeschlagen: {bot_result.get('error')}"
+                    })
+            else:
+                error_msg = result.get("error", "Unbekannter Fehler")
+                results["failed"] += 1
+                results["errors"].append({
+                    "bot": bot_name,
+                    "error": error_msg
+                })
+            
+            # Rate Limiting: Warte zwischen Bot-Erstellungen
+            if i < request.count:
+                await asyncio.sleep(request.delay_between_bots)
+        
+        except FloodWaitError as e:
+            results["failed"] += 1
+            results["errors"].append({
+                "bot": bot_name,
+                "error": f"FloodWait: {e.seconds} Sekunden warten",
+                "wait_seconds": e.seconds
+            })
+            await asyncio.sleep(e.seconds)
+        
+        except Exception as e:
+            logger.error(f"Fehler beim Erstellen von Bot '{bot_name}': {str(e)}", exc_info=True)
+            results["failed"] += 1
+            results["errors"].append({
+                "bot": bot_name,
+                "error": str(e)
+            })
+            await asyncio.sleep(request.delay_between_bots)
+    
+    return {
+        "success": results["success"] > 0,
+        "total": results["total"],
+        "created": results["success"],
+        "failed": results["failed"],
+        "bots": results["bots"],
+        "errors": results["errors"],
+        "message": f"{results['success']} von {results['total']} Bots erfolgreich erstellt"
+    }
+
+@app.post("/api/groups/{group_id}/update-chat-id", response_model=dict)
+async def update_group_chat_id(
+    group_id: int,
+    account_id: int = Query(..., description="Account-ID zum Suchen der Gruppe"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Aktualisiert die Chat-ID einer Gruppe, indem die Dialoge des Accounts durchsucht werden
+    
+    Args:
+        group_id: ID der Gruppe in der Datenbank
+        account_id: Account-ID zum Suchen der Gruppe in Dialogen
+    """
+    account = db.query(Account).filter(Account.id == account_id).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Account nicht gefunden")
+    
+    if account.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Account gehört nicht zum aktuellen Benutzer")
+    
+    if account.account_type != "user":
+        raise HTTPException(status_code=400, detail="Nur User-Accounts können Gruppen aktualisieren")
+    
+    # Prüfe ob Account verbunden ist
+    account_info = await account_manager.get_account_info(account_id)
+    if not account_info:
+        raise HTTPException(status_code=400, detail="Account nicht verbunden. Bitte zuerst verbinden.")
+    
+    group = db.query(Group).filter(Group.id == group_id).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Gruppe nicht gefunden")
+    
+    # Suche Gruppe in Dialogen
+    found_dialog = await account_manager.find_group_in_dialogs(
+        account_id=account_id,
+        group_name=group.name,
+        group_chat_id=group.chat_id
+    )
+    
+    if not found_dialog:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Gruppe '{group.name}' nicht in den Dialogen des Accounts gefunden. Möglicherweise ist der Account nicht in der Gruppe."
+        )
+    
+    # Aktualisiere Chat-ID
+    old_chat_id = group.chat_id
+    new_chat_id = str(found_dialog.get("id"))
+    
+    if old_chat_id != new_chat_id:
+        group.chat_id = new_chat_id
+        if found_dialog.get("username"):
+            group.username = found_dialog.get("username")
+        if found_dialog.get("type"):
+            group.chat_type = found_dialog.get("type")
+        group.last_checked = datetime.utcnow()
+        db.commit()
+        
+        return {
+            "success": True,
+            "message": "Chat-ID erfolgreich aktualisiert",
+            "old_chat_id": old_chat_id,
+            "new_chat_id": new_chat_id,
+            "group_id": group.id,
+            "group_name": group.name
+        }
+    else:
+        return {
+            "success": True,
+            "message": "Chat-ID ist bereits aktuell",
+            "chat_id": old_chat_id,
+            "group_id": group.id,
+            "group_name": group.name
+        }
 
 @app.post("/api/groups/check-exists", response_model=dict)
 async def check_group_exists_endpoint(
@@ -3155,6 +4734,13 @@ async def admin_get_api_settings(
         "source": "database" if getsmscode_key else "environment"
     }
     
+    # OnlineSim API
+    onlinesim_key = db.query(SystemSettings).filter(SystemSettings.key == "onlinesim_api_key").first()
+    api_settings["onlinesim"] = {
+        "api_key": onlinesim_key.value if onlinesim_key else os.getenv("ONLINESIM_API_KEY", ""),
+        "source": "database" if onlinesim_key else "environment"
+    }
+    
     return api_settings
 
 @app.put("/api/admin/api-settings", response_model=dict)
@@ -3280,6 +4866,25 @@ async def admin_update_api_settings(
             )
             db.add(setting)
         results["updated"].append("getsmscode_api_key")
+    
+    # OnlineSim API
+    if "onlinesim" in settings and "api_key" in settings["onlinesim"]:
+        setting = db.query(SystemSettings).filter(SystemSettings.key == "onlinesim_api_key").first()
+        if setting:
+            setting.value = settings["onlinesim"]["api_key"]
+            setting.updated_by = current_user.id
+            setting.updated_at = datetime.utcnow()
+        else:
+            setting = SystemSettings(
+                key="onlinesim_api_key",
+                value=settings["onlinesim"]["api_key"],
+                value_type="string",
+                description="OnlineSim.io API Key",
+                category="api",
+                updated_by=current_user.id
+            )
+            db.add(setting)
+        results["updated"].append("onlinesim_api_key")
     
     db.commit()
     
