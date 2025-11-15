@@ -1,0 +1,327 @@
+.handbook-container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: var(--spacing-lg);
+}
+
+.handbook-container.mobile {
+  padding: var(--spacing-md);
+}
+
+.handbook-header {
+  text-align: center;
+  margin-bottom: var(--spacing-2xl);
+  padding: var(--spacing-xl);
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: var(--radius-lg);
+  color: white;
+  box-shadow: var(--shadow-lg);
+}
+
+.handbook-header h1 {
+  font-size: 2.5rem;
+  margin: 0 0 var(--spacing-md) 0;
+  font-weight: 700;
+}
+
+.handbook-header p {
+  font-size: 1.125rem;
+  margin: 0;
+  opacity: 0.95;
+}
+
+.handbook-content-wrapper {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: var(--spacing-xl);
+  margin-top: var(--spacing-2xl);
+}
+
+.handbook-sidebar {
+  background: white;
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-lg);
+  box-shadow: var(--shadow-md);
+  height: fit-content;
+  position: sticky;
+  top: var(--spacing-lg);
+  max-height: calc(100vh - var(--spacing-2xl));
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.handbook-sidebar.mobile {
+  position: relative;
+  top: 0;
+  max-height: none;
+  margin-bottom: var(--spacing-lg);
+}
+
+.handbook-sidebar h3 {
+  font-size: 1.25rem;
+  margin: 0 0 var(--spacing-lg) 0;
+  color: var(--gray-800);
+  font-weight: 600;
+}
+
+.handbook-nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.handbook-nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md) var(--spacing-lg);
+  background: none;
+  border: none;
+  border-radius: var(--radius-md);
+  text-align: left;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--gray-700);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  width: 100%;
+}
+
+.handbook-nav-item:hover {
+  background: var(--primary-50);
+  color: var(--primary-700);
+  transform: translateX(4px);
+}
+
+.handbook-nav-item.active {
+  background: linear-gradient(90deg, var(--primary-100) 0%, transparent 100%);
+  color: var(--primary-600);
+  font-weight: 600;
+  border-left: 4px solid var(--primary-500);
+}
+
+.handbook-nav-icon {
+  font-size: 1.25rem;
+  width: 24px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.handbook-nav-label {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.handbook-main {
+  background: white;
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-2xl);
+  box-shadow: var(--shadow-md);
+  min-height: 600px;
+}
+
+.handbook-section h2 {
+  font-size: 2rem;
+  margin: 0 0 var(--spacing-xl) 0;
+  color: var(--gray-800);
+  font-weight: 700;
+  border-bottom: 3px solid var(--primary-500);
+  padding-bottom: var(--spacing-md);
+}
+
+.handbook-content {
+  line-height: 1.8;
+  color: var(--gray-700);
+  font-size: 1rem;
+}
+
+.handbook-content h2 {
+  font-size: 1.75rem;
+  margin: var(--spacing-xl) 0 var(--spacing-lg) 0;
+  color: var(--gray-800);
+  font-weight: 600;
+  border-bottom: 2px solid var(--gray-200);
+  padding-bottom: var(--spacing-sm);
+}
+
+.handbook-content h3 {
+  font-size: 1.5rem;
+  margin: var(--spacing-lg) 0 var(--spacing-md) 0;
+  color: var(--gray-800);
+  font-weight: 600;
+}
+
+.handbook-content h4 {
+  font-size: 1.25rem;
+  margin: var(--spacing-md) 0 var(--spacing-sm) 0;
+  color: var(--gray-700);
+  font-weight: 600;
+}
+
+.handbook-content p {
+  margin: var(--spacing-md) 0;
+  line-height: 1.8;
+}
+
+.handbook-content ul,
+.handbook-content ol {
+  margin: var(--spacing-md) 0;
+  padding-left: var(--spacing-xl);
+}
+
+.handbook-content li {
+  margin: var(--spacing-sm) 0;
+  line-height: 1.8;
+}
+
+.handbook-content strong {
+  color: var(--gray-900);
+  font-weight: 600;
+}
+
+.handbook-content .info-box,
+.handbook-content .tip-box,
+.handbook-content .warning-box {
+  padding: var(--spacing-lg);
+  border-radius: var(--radius-md);
+  margin: var(--spacing-lg) 0;
+  border-left: 4px solid;
+}
+
+.handbook-content .info-box {
+  background: var(--primary-50);
+  border-color: var(--primary-500);
+  color: var(--primary-900);
+}
+
+.handbook-content .tip-box {
+  background: #fff3cd;
+  border-color: #ffc107;
+  color: #856404;
+}
+
+.handbook-content .warning-box {
+  background: #f8d7da;
+  border-color: #dc3545;
+  color: #721c24;
+}
+
+/* Mobile Styles */
+@media (max-width: 767px) {
+  .handbook-container.mobile {
+    padding: var(--spacing-sm);
+  }
+
+  .handbook-header {
+    padding: var(--spacing-lg);
+    margin-bottom: var(--spacing-lg);
+  }
+
+  .handbook-header h1 {
+    font-size: 1.75rem;
+  }
+
+  .handbook-header p {
+    font-size: 1rem;
+  }
+
+  .handbook-content-wrapper {
+    grid-template-columns: 1fr;
+    gap: var(--spacing-lg);
+  }
+
+  .handbook-sidebar.mobile {
+    order: 2;
+  }
+
+  .handbook-main {
+    order: 1;
+    padding: var(--spacing-lg);
+  }
+
+  .handbook-section h2 {
+    font-size: 1.5rem;
+  }
+
+  .handbook-content h2 {
+    font-size: 1.375rem;
+  }
+
+  .handbook-content h3 {
+    font-size: 1.25rem;
+  }
+
+  .handbook-content h4 {
+    font-size: 1.125rem;
+  }
+
+  .handbook-content {
+    font-size: 0.9375rem;
+  }
+
+  .handbook-nav-item {
+    padding: var(--spacing-md);
+    font-size: 0.875rem;
+    min-height: 48px;
+  }
+
+  .handbook-nav-icon {
+    font-size: 1.125rem;
+  }
+
+  .handbook-content ul,
+  .handbook-content ol {
+    padding-left: var(--spacing-lg);
+  }
+
+  .handbook-content .info-box,
+  .handbook-content .tip-box,
+  .handbook-content .warning-box {
+    padding: var(--spacing-md);
+    font-size: 0.9375rem;
+  }
+}
+
+/* Tablet Styles */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .handbook-content-wrapper {
+    grid-template-columns: 240px 1fr;
+    gap: var(--spacing-lg);
+  }
+
+  .handbook-sidebar {
+    padding: var(--spacing-md);
+  }
+
+  .handbook-main {
+    padding: var(--spacing-xl);
+  }
+}
+
+/* Touch-friendly on mobile */
+@media (max-width: 767px) {
+  .handbook-nav-item {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+/* Smooth scrolling */
+.handbook-sidebar,
+.handbook-main {
+  scroll-behavior: smooth;
+}
+
+/* Print styles */
+@media print {
+  .handbook-sidebar {
+    display: none;
+  }
+
+  .handbook-content-wrapper {
+    grid-template-columns: 1fr;
+  }
+}
+

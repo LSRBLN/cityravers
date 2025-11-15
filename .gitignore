@@ -18,6 +18,9 @@ ENV/
 .env
 .env.local
 .env.*.local
+.railway.env
+*railway*token*
+*RAILWAY_TOKEN*
 
 # Sessions & Sensible Daten
 sessions/
@@ -52,3 +55,4 @@ backups/
 *.tmp
 *.temp
 .cache/
+.vercel
