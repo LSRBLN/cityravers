@@ -14,6 +14,15 @@ Azure Static Web Apps ist die beste Option für React/Vite Frontend-Deployments 
 
 ---
 
+## ⚠️ WICHTIG: Region-Policy
+
+Falls du den Fehler `InvalidTemplateDeployment` oder `RequestDisallowedByAzure` bekommst:
+- **Siehe:** `AZURE_REGION_FIX.md` für Lösung
+- **Empfehlung:** Verwende `East US` statt `West Europe`
+- **Grund:** Manche Regionen sind durch Azure-Policies blockiert
+
+---
+
 ## 🎯 Option 1: Azure Portal (Empfohlen - 5 Minuten)
 
 ### Schritt 1: Azure Static Web App erstellen
@@ -29,7 +38,7 @@ Azure Static Web Apps ist die beste Option für React/Vite Frontend-Deployments 
 - **Resource Group:** Erstelle neue oder wähle bestehende
 - **Name:** z.B. `telegram-bot-frontend`
 - **Plan type:** Free (für Start)
-- **Region:** Wähle nächstgelegene Region (z.B. `West Europe`)
+- **Region:** ⚠️ **WICHTIG:** Wähle eine **erlaubte Region** (z.B. `East US` statt `West Europe` - siehe `AZURE_REGION_FIX.md` bei Policy-Fehlern)
 
 **Deployment details:**
 - **Source:** GitHub
@@ -84,9 +93,10 @@ az login
 az account set --subscription "[deine-subscription-id]"
 
 # Resource Group erstellen (falls nicht vorhanden)
+# ⚠️ WICHTIG: Verwende erlaubte Region (z.B. eastus statt westeurope)
 az group create \
   --name telegram-bot-rg \
-  --location westeurope
+  --location eastus
 ```
 
 ### Schritt 3: Static Web App erstellen
