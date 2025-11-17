@@ -792,8 +792,17 @@ export default function AccountManager({ accounts, proxies = [], onUpdate }) {
           </thead>
           <tbody>
             {accounts.map(account => (
-              <tr key={account.id}>
-                <td style={{ color: 'var(--gray-900)' }}>{account.name}</td>
+              <tr 
+                key={account.id}
+                style={{
+                  backgroundColor: account.connected ? 'rgba(76, 175, 80, 0.05)' : 'transparent',
+                  borderLeft: account.connected ? '4px solid #4CAF50' : '4px solid transparent'
+                }}
+              >
+                <td style={{ color: 'var(--gray-900)', fontWeight: account.connected ? '600' : 'normal' }}>
+                  {account.connected && <span style={{ marginRight: '8px', fontSize: '1.2em' }}>✅</span>}
+                  {account.name}
+                </td>
                 <td>
                   <span className={`badge ${account.account_type === 'bot' ? 'badge-info' : 'badge-secondary'}`}>
                     {account.account_type === 'bot' ? 'Bot' : 'User'}
@@ -802,9 +811,23 @@ export default function AccountManager({ accounts, proxies = [], onUpdate }) {
                   <td style={{ color: 'var(--gray-900)' }}>{account.phone_number || '-'}</td>
                   <td>
                     {account.connected ? (
-                      <span className="badge badge-success">Verbunden</span>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <span className="badge badge-success" style={{ fontSize: '0.9em', padding: '6px 12px' }}>
+                          ✅ Verbunden
+                        </span>
+                        <span style={{ fontSize: '0.75em', color: 'var(--gray-600)', fontStyle: 'italic' }}>
+                          Bereit zur Nutzung
+                        </span>
+                      </div>
                     ) : (
-                      <span className="badge badge-warning">Nicht verbunden</span>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <span className="badge badge-warning" style={{ fontSize: '0.9em', padding: '6px 12px' }}>
+                          ⚠️ Nicht verbunden
+                        </span>
+                        <span style={{ fontSize: '0.75em', color: 'var(--gray-600)', fontStyle: 'italic' }}>
+                          Login erforderlich
+                        </span>
+                      </div>
                     )}
                   </td>
                   <td>
@@ -817,33 +840,68 @@ export default function AccountManager({ accounts, proxies = [], onUpdate }) {
                     )}
                   </td>
                   <td>
-                    {account.info && (
-                      <span style={{ color: 'var(--gray-900)' }}>@{account.info.username || 'N/A'}</span>
+                    {account.info ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                        <span style={{ color: 'var(--gray-900)', fontWeight: '500' }}>
+                          @{account.info.username || 'N/A'}
+                        </span>
+                        {account.info.first_name && (
+                          <span style={{ fontSize: '0.85em', color: 'var(--gray-600)' }}>
+                            {account.info.first_name} {account.info.last_name || ''}
+                          </span>
+                        )}
+                      </div>
+                    ) : account.connected ? (
+                      <span style={{ color: 'var(--gray-500)', fontStyle: 'italic' }}>Info wird geladen...</span>
+                    ) : (
+                      <span style={{ color: 'var(--gray-400)' }}>-</span>
                     )}
                   </td>
                 <td>
-                  <div style={{ display: 'flex', gap: '5px' }}>
-                    {!account.connected && account.account_type === 'user' && (
-                      <button
-                        className="btn btn-success btn-small"
-                        onClick={() => handleRequestCode(account.id)}
-                      >
-                        🔐 Login
-                      </button>
-                    )}
-                    {account.account_type === 'user' && (
-                      <button
-                        className="btn btn-secondary btn-small"
-                        onClick={() => handleLoadDialogs(account.id)}
-                      >
-                        Dialoge
-                      </button>
+                  <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+                    {account.connected ? (
+                      <>
+                        <span 
+                          className="badge badge-success" 
+                          style={{ 
+                            padding: '6px 10px', 
+                            fontSize: '0.85em',
+                            cursor: 'default',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}
+                          title="Account ist bereits verbunden - kein Login nötig"
+                        >
+                          ✅ Bereit
+                        </span>
+                        {account.account_type === 'user' && (
+                          <button
+                            className="btn btn-secondary btn-small"
+                            onClick={() => handleLoadDialogs(account.id)}
+                            title="Dialoge anzeigen"
+                          >
+                            💬 Dialoge
+                          </button>
+                        )}
+                      </>
+                    ) : (
+                      account.account_type === 'user' && (
+                        <button
+                          className="btn btn-success btn-small"
+                          onClick={() => handleRequestCode(account.id)}
+                          title="Account verbinden"
+                        >
+                          🔐 Login
+                        </button>
+                      )
                     )}
                     <button
                       className="btn btn-danger btn-small"
                       onClick={() => handleDelete(account.id)}
+                      title="Account löschen"
                     >
-                      Löschen
+                      🗑️ Löschen
                     </button>
                   </div>
                 </td>
