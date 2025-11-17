@@ -18,6 +18,7 @@ export default function DropdownMenu({ activeTab, setActiveTab, isAdmin }) {
     { id: 'proxies', label: 'Proxies', icon: '🔒' },
     { id: 'account-to-groups', label: 'Account zu Gruppen', icon: '👤→👥' },
     { id: 'subscriptions', label: 'Pakete', icon: '📦' },
+    { id: 'handbook', label: '📖 Handbuch & Anleitungen', icon: '📖', highlight: true },
   ]
 
   if (isAdmin) {
@@ -55,37 +56,47 @@ export default function DropdownMenu({ activeTab, setActiveTab, isAdmin }) {
   }
 
   return (
-    <div className="dropdown-menu-container" ref={dropdownRef}>
-      <button
-        className="dropdown-menu-trigger"
-        onClick={() => setIsOpen(!isOpen)}
-        aria-label="Menu öffnen"
-      >
-        <span className="dropdown-menu-icon">☰</span>
-        <span className="dropdown-menu-label">
-          {activeItem ? `${activeItem.icon} ${activeItem.label}` : '☰ Menü'}
-        </span>
-        <span className={`dropdown-menu-arrow ${isOpen ? 'open' : ''}`}>▼</span>
-      </button>
-
-      {isOpen && (
-        <div className="dropdown-menu">
-          {menuItems.map((item) => (
-            <button
-              key={item.id}
-              className={`dropdown-menu-item ${activeTab === item.id ? 'active' : ''} ${item.highlight ? 'highlight' : ''}`}
-              onClick={() => handleSelect(item.id)}
-            >
-              <span className="dropdown-menu-item-icon">{item.icon}</span>
-              <span className="dropdown-menu-item-label">{item.label}</span>
-              {activeTab === item.id && (
-                <span className="dropdown-menu-item-check">✓</span>
-              )}
-            </button>
-          ))}
-        </div>
+    <>
+      {isOpen && isMobile && (
+        <div 
+          className="dropdown-menu-overlay"
+          onClick={() => setIsOpen(false)}
+        />
       )}
-    </div>
+      <div className="dropdown-menu-container" ref={dropdownRef}>
+        <button
+          className="dropdown-menu-trigger"
+          onClick={() => setIsOpen(!isOpen)}
+          aria-label="Menu öffnen"
+          aria-expanded={isOpen}
+        >
+          <span className="dropdown-menu-icon">☰</span>
+          <span className="dropdown-menu-label">
+            {activeItem ? `${activeItem.icon} ${activeItem.label}` : '☰ Menü'}
+          </span>
+          <span className={`dropdown-menu-arrow ${isOpen ? 'open' : ''}`}>▼</span>
+        </button>
+
+        {isOpen && (
+          <div className={`dropdown-menu ${isMobile ? 'mobile' : ''}`}>
+            {menuItems.map((item) => (
+              <button
+                key={item.id}
+                className={`dropdown-menu-item ${activeTab === item.id ? 'active' : ''} ${item.highlight ? 'highlight' : ''}`}
+                onClick={() => handleSelect(item.id)}
+                aria-label={item.label}
+              >
+                <span className="dropdown-menu-item-icon">{item.icon}</span>
+                <span className="dropdown-menu-item-label">{item.label}</span>
+                {activeTab === item.id && (
+                  <span className="dropdown-menu-item-check">✓</span>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </>
   )
 }
 

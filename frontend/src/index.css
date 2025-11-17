@@ -10,11 +10,21 @@ body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background: linear-gradient(135deg, var(--gray-50) 0%, var(--gray-100) 100%);
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%);
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
   background-attachment: fixed;
-  color: var(--gray-900);
+  color: rgba(255, 255, 255, 0.9);
   overflow-x: hidden;
   line-height: 1.6;
+  /* Scroll-Performance optimieren */
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  /* Hardware-Beschleunigung */
+  transform: translateZ(0);
+  will-change: scroll-position;
+  /* Smooth Scrolling */
+  scroll-behavior: smooth;
 }
 
 /* Mobile body adjustments */
@@ -30,9 +40,15 @@ code {
 }
 
 .container {
-  max-width: 1200px;
+  max-width: 1400px;
   margin: 0 auto;
-  padding: 20px;
+  padding: var(--spacing-lg);
+  /* Scroll-Performance optimieren */
+  transform: translateZ(0);
+  will-change: scroll-position;
+  /* Smooth Scrolling */
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 
 /* Mobile Container */
@@ -74,27 +90,52 @@ code {
 }
 
 .card {
-  background: white;
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   border-radius: var(--radius-lg);
-  padding: var(--spacing-xl);
-  margin-bottom: var(--spacing-lg);
-  box-shadow: var(--shadow-md);
-  border: 1px solid var(--gray-200);
-  transition: all var(--transition-base);
+  padding: var(--spacing-lg);
+  margin-bottom: var(--spacing-md);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15), 0 1px 3px rgba(0, 0, 0, 0.1);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+  /* Hardware-Beschleunigung für bessere Performance */
+  transform: translateZ(0);
+  will-change: transform, box-shadow;
+  /* Glassmorphism-Effekt */
+  position: relative;
+  overflow: hidden;
+  color: var(--gray-900);
+}
+
+.card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(102, 126, 234, 0.3), transparent);
+  opacity: 0;
+  transition: opacity var(--transition-fast);
 }
 
 .card:hover {
-  box-shadow: var(--shadow-lg);
-  transform: translateY(-2px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(0, 0, 0, 0.08);
+  transform: translateY(-4px) translateZ(0);
+}
+
+.card:hover::before {
+  opacity: 1;
 }
 
 .card h2 {
-  margin-bottom: var(--spacing-lg);
-  color: var(--primary-600);
-  border-bottom: 2px solid var(--primary-200);
-  padding-bottom: var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+  color: var(--gray-900);
+  border-bottom: 2px solid var(--gray-200);
+  padding-bottom: var(--spacing-sm);
   font-weight: 600;
-  font-size: 1.5rem;
+  font-size: 1.25rem;
 }
 
 .form-group {
@@ -105,25 +146,33 @@ code {
   display: block;
   margin-bottom: 5px;
   font-weight: 600;
-  color: #555;
+  color: var(--gray-900);
 }
 
 .form-group input,
 .form-group select,
 .form-group textarea {
   width: 100%;
-  padding: 10px;
-  border: 2px solid #e0e0e0;
-  border-radius: 5px;
+  padding: 12px 16px;
+  border: 2px solid var(--gray-200);
+  border-radius: var(--radius-md);
   font-size: 1rem;
-  transition: border-color 0.3s;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  /* Hardware-Beschleunigung */
+  transform: translateZ(0);
+  will-change: border-color, box-shadow;
 }
 
 .form-group input:focus,
 .form-group select:focus,
 .form-group textarea:focus {
   outline: none;
-  border-color: #667eea;
+  border-color: var(--primary-500);
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1), 0 2px 8px rgba(102, 126, 234, 0.15);
+  background: rgba(255, 255, 255, 1);
 }
 
 .form-group textarea {
@@ -140,22 +189,46 @@ code {
 .btn {
   padding: 12px 24px;
   border: none;
-  border-radius: 5px;
+  border-radius: var(--radius-md);
   font-size: 1rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.3s;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast), background var(--transition-base);
+  /* Hardware-Beschleunigung */
+  transform: translateZ(0);
+  will-change: transform, box-shadow;
+  position: relative;
+  overflow: hidden;
+  /* High-End Button Design */
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .btn-primary {
   background: linear-gradient(135deg, var(--primary-500) 0%, var(--secondary-500) 100%);
   color: white;
-  box-shadow: var(--shadow-md);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4), 0 2px 4px rgba(0, 0, 0, 0.1);
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-primary::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+  transition: left 0.5s;
+}
+
+.btn-primary:hover::before {
+  left: 100%;
 }
 
 .btn-primary:hover {
-  box-shadow: var(--shadow-lg);
-  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(102, 126, 234, 0.5), 0 4px 8px rgba(0, 0, 0, 0.15);
+  transform: translateY(-2px) translateZ(0);
 }
 
 .btn-danger {
@@ -192,25 +265,58 @@ code {
 
 .table {
   width: 100%;
-  border-collapse: collapse;
-  margin-top: 20px;
+  border-collapse: separate;
+  border-spacing: 0;
+  margin-top: var(--spacing-md);
+  /* Hardware-Beschleunigung */
+  transform: translateZ(0);
+  will-change: scroll-position;
+  background: rgba(255, 255, 255, 1);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .table th,
 .table td {
-  padding: 12px;
+  padding: 12px 14px;
   text-align: left;
-  border-bottom: 1px solid #e0e0e0;
+  border-bottom: 1px solid var(--gray-200);
+  transition: background-color var(--transition-fast);
+  color: var(--gray-900);
 }
 
 .table th {
-  background: #f8f9fa;
+  background: linear-gradient(135deg, var(--gray-50) 0%, var(--gray-100) 100%);
   font-weight: 600;
-  color: #555;
+  color: var(--gray-900);
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  /* Hardware-Beschleunigung für sticky */
+  transform: translateZ(0);
+  will-change: transform;
 }
 
-.table tr:hover {
-  background: #f8f9fa;
+.table tbody tr {
+  transition: background-color var(--transition-fast), transform var(--transition-fast);
+  /* Isolation für bessere Performance */
+  isolation: isolate;
+  background: rgba(255, 255, 255, 1);
+}
+
+.table tbody tr:hover {
+  background: rgba(102, 126, 234, 0.08);
+  transform: translateX(2px) translateZ(0);
+}
+
+.table tbody tr:last-child td {
+  border-bottom: none;
 }
 
 .badge {
@@ -267,21 +373,59 @@ code {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1000;
+  /* Smooth Animation */
+  animation: fadeIn 0.2s ease-out;
+  /* Hardware-Beschleunigung */
+  transform: translateZ(0);
+  will-change: opacity;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .modal-content {
-  background: white;
-  border-radius: 10px;
-  padding: 30px;
-  max-width: 500px;
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-radius: var(--radius-xl);
+  padding: 32px;
+  max-width: 600px;
   width: 90%;
   max-height: 90vh;
   overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  /* Smooth Animation */
+  animation: slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  /* Scroll-Performance */
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  transform: translateZ(0);
+  will-change: transform;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px) translateZ(0);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) translateZ(0);
+  }
 }
 
 .modal-header {
@@ -341,7 +485,7 @@ code {
 .empty-state {
   text-align: center;
   padding: 40px;
-  color: #999;
+  color: var(--gray-600);
 }
 
 .empty-state svg {

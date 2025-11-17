@@ -1,0 +1,14 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../../Downloads/sessions_temp/sessions"
+		},
+		{
+			"path": "../../Downloads/sessions_temp/program_logs"
+		}
+	],
+	"settings": {}
+}

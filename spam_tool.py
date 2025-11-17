@@ -56,7 +56,8 @@ class TelegramSpamTool:
         """Verbindet zum Telegram Account"""
         await self.client.start(phone=phone)
         if not await self.client.is_user_authorized():
-            await self.client.send_code_request(phone)
+            # Versuche Code über Telegram-App zu senden (nicht per SMS)
+            await self.client.send_code_request(phone, force_sms=False)
             try:
                 code = input('Gib den Code ein, den du per Telegram erhalten hast: ')
                 await self.client.sign_in(phone, code)

@@ -147,9 +147,9 @@ class ScheduledMessageCreate(BaseModel):
     scheduled_time: datetime
     delay: float = Field(default=1.0, ge=0.1, le=60.0)
     batch_size: int = Field(default=10, ge=1, le=100)
-    batch_delay: float = Field(default=5.0, ge=0, le=300.0)
-    repeat_count: int = Field(default=1, ge=1, le=1000)
-    group_delay: float = Field(default=2.0, ge=0, le=300.0)  # Delay zwischen Gruppen
+
+class SendDialogMessageRequest(BaseModel):
+    message: str = Field(..., min_length=1, max_length=4096)
 
 class ScheduledMessageUpdate(BaseModel):
     message: Optional[str] = None
@@ -1306,9 +1306,6 @@ class MessageTemplateCreate(BaseModel):
     message: str
     category: Optional[str] = None
     tags: Optional[List[str]] = None
-
-class SendDialogMessageRequest(BaseModel):
-    message: str = Field(..., min_length=1, max_length=4096)
 
 class CreateTemplateFromMessageRequest(BaseModel):
     account_id: int

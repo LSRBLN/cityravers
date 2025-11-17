@@ -11,7 +11,7 @@ from telethon import TelegramClient
 from telethon.errors import FloodWaitError, SessionPasswordNeededError, UserPrivacyRestrictedError, ChatAdminRequiredError
 from telethon.tl.types import User, Chat, Channel
 from telethon.tl.functions.channels import GetParticipantsRequest, InviteToChannelRequest, GetFullChannelRequest, GetParticipantRequest
-from telethon.tl.functions.messages import AddChatUserRequest, GetDialogsRequest, SendReactionRequest, GetHistoryRequest, GetFullChatRequest
+from telethon.tl.functions.messages import AddChatUserRequest, GetDialogsRequest, SendReactionRequest, GetHistoryRequest, GetFullChatRequest, ImportChatInviteRequest, SendMessageRequest, ExportChatInviteRequest
 from telethon.tl.types import ChannelParticipantsSearch, ReactionEmoji, InputPeerEmpty
 from telethon.network.connection import ConnectionTcpMTProxyRandomizedIntermediate
 import random
@@ -149,7 +149,8 @@ class AccountManager:
         code: Optional[str] = None,
         password: Optional[str] = None,
         session_file_path: Optional[str] = None,
-        proxy_config: Optional[dict] = None
+        proxy_config: Optional[dict] = None,
+        phone_code_hash: Optional[str] = None
     ) -> dict:
         """
         Fügt einen Account hinzu und verbindet
@@ -238,21 +239,118 @@ class AccountManager:
                         "error": "Telefonnummer erforderlich für neuen Account"
                     }
                 
+                # Normalisiere Telefonnummer (entferne Leerzeichen, behalte +)
+                phone_number = phone_number.strip().replace(" ", "").replace("-", "")
+                if not phone_number.startswith("+"):
+                    # Wenn keine Ländervorwahl vorhanden, füge + hinzu (Standard: Deutschland)
+                    if not phone_number.startswith("00"):
+                        phone_number = "+" + phone_number
+                    else:
+                        phone_number = "+" + phone_number[2:]
+                
                 # Sende Code-Anfrage wenn noch kein Code vorhanden
+                # force_sms=False: Versuche Code über Telegram-App zu senden (nicht per SMS)
                 if not code:
                     try:
-                        await client.send_code_request(phone_number)
-                        return {"status": "code_required", "account_id": account_id}
-                    except Exception as e:
-                        await client.disconnect()
+                        # Prüfe ob Client verbunden ist
+                        if not client.is_connected():
+                            await client.connect()
+                        
+                        print(f"[DEBUG] Fordere Code an für Telefonnummer: {phone_number}")
+                        print(f"[DEBUG] API ID: {final_api_id}, API Hash vorhanden: {bool(final_api_hash)}")
+                        
+                        # Versuche Code über Telegram-App zu senden (nicht per SMS)
+                        sent_code = await client.send_code_request(phone_number, force_sms=False)
+                        
+                        print(f"[DEBUG] Code-Anfrage erfolgreich. Type: {sent_code.type if hasattr(sent_code, 'type') else 'unknown'}")
+                        
+                        # Prüfe ob Code über Telegram gesendet wurde
+                        code_type = sent_code.type.__class__.__name__ if hasattr(sent_code, 'type') else 'unknown'
+                        phone_code_hash = sent_code.phone_code_hash if hasattr(sent_code, 'phone_code_hash') else None
+                        
+                        # Prüfe den tatsächlichen Typ
+                        if hasattr(sent_code, 'type'):
+                            if hasattr(sent_code.type, 'pattern'):
+                                # Code wurde über Telegram-App gesendet
+                                code_type = "telegram_app"
+                                message = "✅ Code wurde über Telegram gesendet. Prüfe deine Telegram-App!"
+                            elif hasattr(sent_code.type, 'length'):
+                                # Code wurde per SMS gesendet
+                                code_type = "sms"
+                                message = "⚠️ Code wurde per SMS gesendet (Telegram-Versand nicht möglich)."
+                            else:
+                                message = "✅ Code wurde angefordert. Prüfe Telegram oder SMS!"
+                        else:
+                            message = "✅ Code wurde angefordert. Prüfe Telegram oder SMS!"
+                        
+                        # WICHTIG: Session speichern, damit phone_code_hash erhalten bleibt
+                        # Telethon speichert den Hash automatisch in der Session
+                        try:
+                            await client.disconnect()
+                        except:
+                            pass
+                        
                         return {
-                            "status": "error",
-                            "error": f"Fehler beim Anfordern des Codes: {str(e)}"
+                            "status": "code_required", 
+                            "account_id": account_id,
+                            "code_type": code_type,
+                            "phone_code_hash": phone_code_hash,
+                            "message": message
                         }
+                    except Exception as e:
+                        error_msg = str(e)
+                        error_type = type(e).__name__
+                        print(f"[ERROR] Fehler beim Anfordern des Codes über Telegram: {error_type}: {error_msg}")
+                        
+                        # Wenn Telegram-Versand fehlschlägt, versuche SMS als Fallback
+                        try:
+                            print(f"[DEBUG] Versuche SMS-Fallback für: {phone_number}")
+                            sent_code = await client.send_code_request(phone_number, force_sms=True)
+                            print(f"[DEBUG] SMS-Code-Anfrage erfolgreich")
+                            sms_phone_code_hash = sent_code.phone_code_hash if hasattr(sent_code, 'phone_code_hash') else None
+                            # Session speichern
+                            try:
+                                await client.disconnect()
+                            except:
+                                pass
+                            
+                            return {
+                                "status": "code_required",
+                                "account_id": account_id,
+                                "code_type": "sms",
+                                "phone_code_hash": sms_phone_code_hash,
+                                "message": "⚠️ Code wurde per SMS gesendet (Telegram-Versand nicht möglich)."
+                            }
+                        except Exception as sms_error:
+                            sms_error_type = type(sms_error).__name__
+                            sms_error_msg = str(sms_error)
+                            print(f"[ERROR] SMS-Fallback fehlgeschlagen: {sms_error_type}: {sms_error_msg}")
+                            await client.disconnect()
+                            return {
+                                "status": "error",
+                                "error": f"Fehler beim Anfordern des Codes: {error_type}: {error_msg}. SMS-Fallback fehlgeschlagen: {sms_error_type}: {sms_error_msg}"
+                            }
                 
                 # Login mit Code
                 try:
-                    await client.sign_in(phone_number, code)
+                    # WICHTIG: Telethon speichert phone_code_hash automatisch in der Session
+                    # Wenn phone_code_hash explizit übergeben wird, verwende ihn
+                    # Ansonsten liest Telethon ihn automatisch aus der Session
+                    if phone_code_hash:
+                        print(f"[DEBUG] Verwende expliziten phone_code_hash: {phone_code_hash[:10]}...")
+                        await client.sign_in(phone_number, code, phone_code_hash=phone_code_hash)
+                    else:
+                        # Telethon sollte den Hash automatisch aus der Session lesen
+                        # Falls nicht, versuche ohne Hash (Telethon liest ihn aus der Session)
+                        print(f"[DEBUG] Versuche Login ohne expliziten Hash (Telethon liest aus Session)")
+                        try:
+                            await client.sign_in(phone_number, code)
+                        except Exception as sign_in_error:
+                            # Falls das fehlschlägt, könnte der Hash fehlen
+                            error_msg = str(sign_in_error)
+                            print(f"[ERROR] Login fehlgeschlagen: {error_msg}")
+                            # Versuche einen neuen Code anzufordern
+                            raise Exception(f"Login fehlgeschlagen. Möglicherweise ist der Code abgelaufen oder ungültig. Bitte einen neuen Code anfordern. Fehler: {error_msg}")
                     me = await client.get_me()
                 except SessionPasswordNeededError:
                     # 2FA erforderlich
@@ -387,7 +485,8 @@ class AccountManager:
                 dialog_info = {
                     "id": dialog.id,
                     "name": dialog.name,
-                    "type": "unknown"
+                    "type": "unknown",
+                    "chat_id": str(dialog.id)  # Chat-ID als String
                 }
                 
                 if isinstance(entity, User):
@@ -396,9 +495,12 @@ class AccountManager:
                     dialog_info["phone"] = entity.phone
                 elif isinstance(entity, Chat):
                     dialog_info["type"] = "group"
+                    dialog_info["participants_count"] = getattr(entity, "participants_count", None)
                 elif isinstance(entity, Channel):
                     dialog_info["type"] = "channel" if entity.broadcast else "supergroup"
                     dialog_info["username"] = entity.username
+                    dialog_info["participants_count"] = getattr(entity, "participants_count", None)
+                    dialog_info["access_hash"] = str(entity.access_hash) if hasattr(entity, "access_hash") else None
                 
                 dialogs.append(dialog_info)
         
@@ -406,6 +508,41 @@ class AccountManager:
             print(f"Fehler beim Abrufen der Dialoge: {e}")
         
         return dialogs
+    
+    async def find_group_in_dialogs(self, account_id: int, group_name: str = None, group_chat_id: str = None) -> Optional[dict]:
+        """
+        Sucht eine Gruppe in den Dialogen eines Accounts
+        
+        Args:
+            account_id: Account-ID
+            group_name: Gruppenname (optional)
+            group_chat_id: Chat-ID der Gruppe (optional)
+            
+        Returns:
+            Dict mit Gruppen-Informationen oder None
+        """
+        if account_id not in self.clients:
+            return None
+        
+        dialogs = await self.get_dialogs(account_id)
+        
+        # Suche nach Chat-ID
+        if group_chat_id:
+            for dialog in dialogs:
+                if str(dialog.get("id")) == str(group_chat_id) or dialog.get("chat_id") == str(group_chat_id):
+                    return dialog
+        
+        # Suche nach Name
+        if group_name:
+            group_name_lower = group_name.lower().strip()
+            for dialog in dialogs:
+                if dialog.get("name", "").lower().strip() == group_name_lower:
+                    return dialog
+                # Prüfe auch Username
+                if dialog.get("username", "").lower().strip() == group_name_lower.lstrip("@"):
+                    return dialog
+        
+        return None
     
     async def send_to_multiple_groups(
         self,
@@ -555,19 +692,24 @@ class AccountManager:
         account_id: int,
         group_entity: str,
         user_ids: List[str],
-        delay: float = 2.0
+        delay: float = 2.0,
+        invite_method: str = "admin"  # "admin" oder "invite_link"
     ) -> dict:
         """
-        Lädt User zu einer Gruppe ein (als Admin)
+        Lädt User zu einer Gruppe ein
         
         Args:
-            account_id: Account-ID (muss Admin sein)
+            account_id: Account-ID (muss Admin sein für "admin" Methode)
             group_entity: Chat-ID oder Username der Gruppe
             user_ids: Liste von User-IDs oder Usernames
-            delay: Verzögerung zwischen Einladungen
+            delay: Verzögerung zwischen Einladungen (wird nicht mehr verwendet - Delay ist jetzt zufällig zwischen 5-55 Sekunden)
+            invite_method: "admin" (direkte Einladung als Admin) oder "invite_link" (Link erstellen und senden)
             
         Returns:
             Ergebnis-Dict mit Statistiken
+            
+        Note:
+            Der Delay zwischen Einladungen ist zufällig zwischen 5 und 55 Sekunden, um Rate-Limiting zu vermeiden.
         """
         if account_id not in self.clients:
             return {"success": False, "error": "Account not connected"}
@@ -577,12 +719,161 @@ class AccountManager:
             "total": len(user_ids),
             "success": 0,
             "failed": 0,
-            "errors": []
+            "errors": [],
+            "invite_link": None  # Wird bei invite_link Methode gesetzt
         }
         
         try:
-            entity = await client.get_entity(group_entity)
+            # Versuche Entity zu laden
+            # Konvertiere Chat-ID zu Integer, falls es eine numerische String-ID ist
+            try:
+                # Prüfe ob es eine numerische Chat-ID ist (z.B. "-1002139460011")
+                if isinstance(group_entity, str) and (group_entity.startswith("-") or group_entity.isdigit()):
+                    try:
+                        chat_id_int = int(group_entity)
+                        # Versuche zuerst als Integer zu laden
+                        entity = await client.get_entity(chat_id_int)
+                    except (ValueError, TypeError):
+                        # Falls Integer-Konvertierung fehlschlägt, versuche als String
+                        entity = await client.get_entity(group_entity)
+                else:
+                    entity = await client.get_entity(group_entity)
+            except ValueError as ve:
+                error_msg = str(ve)
+                # Prüfe ob es ein "Cannot find entity" Fehler ist
+                if "Cannot find" in error_msg or "No entity" in error_msg:
+                    # Versuche die Chat-ID zu konvertieren und erneut zu laden
+                    try:
+                        if isinstance(group_entity, str):
+                            chat_id_int = int(group_entity)
+                            entity = await client.get_entity(chat_id_int)
+                        else:
+                            raise ve
+                    except (ValueError, TypeError):
+                        return {
+                            "success": False,
+                            "error": f"Gruppe nicht gefunden: {group_entity}. Mögliche Ursachen:\n- Der Account ist nicht in der Gruppe\n- Die Chat-ID ist falsch oder veraltet\n- Die Gruppe existiert nicht mehr\n\nFehler: {error_msg}"
+                        }
+                else:
+                    return {
+                        "success": False,
+                        "error": f"Fehler beim Laden der Gruppe: {error_msg}"
+                    }
             
+            # Prüfe ob Account in der Gruppe ist (für bessere Fehlermeldungen)
+            try:
+                me = await client.get_me()
+                # Versuche Teilnehmer-Info abzurufen (prüft ob Account in Gruppe ist)
+                if isinstance(entity, Channel):
+                    try:
+                        await client(GetParticipantRequest(entity, me))
+                    except:
+                        # Account ist nicht in der Gruppe
+                        return {
+                            "success": False,
+                            "error": f"Account ist nicht in der Gruppe '{getattr(entity, 'title', group_entity)}'. Bitte zuerst der Gruppe beitreten oder die Chat-ID aktualisieren."
+                        }
+            except Exception as e:
+                # Ignoriere Fehler bei der Prüfung, versuche trotzdem fortzufahren
+                pass
+            
+            # Bei invite_link Methode: Erstelle zuerst einen Einladungslink
+            if invite_method == "invite_link":
+                try:
+                    # ExportChatInviteRequest funktioniert für beide (Kanäle und Gruppen)
+                    invite_result = await client(ExportChatInviteRequest(entity))
+                    
+                    # Extrahiere Link (verschiedene Rückgabetypen möglich)
+                    invite_link = None
+                    if hasattr(invite_result, 'link'):
+                        invite_link = invite_result.link
+                    elif hasattr(invite_result, 'invite'):
+                        if hasattr(invite_result.invite, 'link'):
+                            invite_link = invite_result.invite.link
+                        elif hasattr(invite_result.invite, 'hash'):
+                            # Erstelle Link aus Hash
+                            invite_hash = invite_result.invite.hash
+                            if isinstance(entity, Channel) and hasattr(entity, 'username') and entity.username:
+                                invite_link = f"https://t.me/{entity.username}"
+                            else:
+                                invite_link = f"https://t.me/joinchat/{invite_hash}"
+                    elif hasattr(invite_result, 'hash'):
+                        # Direkter Hash
+                        invite_hash = invite_result.hash
+                        if isinstance(entity, Channel) and hasattr(entity, 'username') and entity.username:
+                            invite_link = f"https://t.me/{entity.username}"
+                        else:
+                            invite_link = f"https://t.me/joinchat/{invite_hash}"
+                    
+                    if not invite_link:
+                        return {
+                            "success": False,
+                            "error": "Konnte keinen Einladungslink erstellen. Account muss Admin sein."
+                        }
+                    
+                    results["invite_link"] = invite_link
+                    
+                    # Sende Link an alle User per DM
+                    for i, user_id in enumerate(user_ids):
+                        try:
+                            # Versuche User zu laden
+                            try:
+                                user_entity = await client.get_entity(user_id)
+                            except:
+                                results["failed"] += 1
+                                results["errors"].append({
+                                    "user_id": user_id,
+                                    "error": "User nicht gefunden"
+                                })
+                                continue
+                            
+                            # Sende Einladungslink per DM
+                            message_text = f"Einladung zur Gruppe:\n{invite_link}"
+                            await client.send_message(user_entity, message_text)
+                            
+                            results["success"] += 1
+                            
+                            # Rate Limiting - zufälliger Delay zwischen 5 und 55 Sekunden
+                            if i < len(user_ids) - 1:
+                                random_delay = random.uniform(5.0, 55.0)
+                                await asyncio.sleep(random_delay)
+                        
+                        except FloodWaitError as e:
+                            results["failed"] += 1
+                            results["errors"].append({
+                                "user_id": user_id,
+                                "error": f"FloodWait: {e.seconds}s"
+                            })
+                            await asyncio.sleep(e.seconds)
+                        
+                        except UserPrivacyRestrictedError:
+                            results["failed"] += 1
+                            results["errors"].append({
+                                "user_id": user_id,
+                                "error": "User hat Privatsphäre-Einstellungen aktiviert (DM nicht möglich)"
+                            })
+                        
+                        except Exception as e:
+                            results["failed"] += 1
+                            results["errors"].append({
+                                "user_id": user_id,
+                                "error": str(e)
+                            })
+                    
+                    return results
+                
+                except ChatAdminRequiredError:
+                    return {
+                        "success": False,
+                        "error": "Account ist kein Admin. Kann keinen Einladungslink erstellen."
+                    }
+                except Exception as e:
+                    return {
+                        "success": False,
+                        "error": f"Fehler beim Erstellen des Einladungslinks: {str(e)}"
+                    }
+            
+            # Admin-Methode: Direkte Einladung
             for i, user_id in enumerate(user_ids):
                 try:
                     # Versuche User zu laden
@@ -613,9 +904,10 @@ class AccountManager:
                     
                     results["success"] += 1
                     
-                    # Rate Limiting
+                    # Rate Limiting - zufälliger Delay zwischen 5 und 55 Sekunden
                     if i < len(user_ids) - 1:
-                        await asyncio.sleep(delay)
+                        random_delay = random.uniform(5.0, 55.0)
+                        await asyncio.sleep(random_delay)
                 
                 except FloodWaitError as e:
                     results["failed"] += 1
@@ -861,12 +1153,454 @@ class AccountManager:
         
         return results
     
+    async def forward_message_by_id(
+        self,
+        account_id: int,
+        source_group: str,
+        message_id: int,
+        target_groups: List[str],
+        delay: float = 2.0
+    ) -> dict:
+        """
+        Leitet eine einzelne Nachricht per Message-ID weiter
+        
+        Args:
+            account_id: Account-ID
+            source_group: Chat-ID oder Username der Quell-Gruppe
+            message_id: Message-ID der zu weiterleitenden Nachricht
+            target_groups: Liste von Chat-IDs der Ziel-Gruppen
+            delay: Delay zwischen Weiterleitungen
+            
+        Returns:
+            Dict mit success, forwarded, failed, errors
+        """
+        if account_id not in self.clients:
+            return {
+                "success": False,
+                "error": "Account nicht verbunden"
+            }
+        
+        client = self.clients[account_id]
+        results = {
+            "success": True,
+            "forwarded": 0,
+            "failed": 0,
+            "errors": []
+        }
+        
+        try:
+            # Lade Quell-Entity
+            try:
+                source_entity = await client.get_entity(source_group)
+            except ValueError as ve:
+                error_msg = str(ve)
+                # Prüfe ob es ein privater Chat ist (positive Chat-ID ohne Minus)
+                # Private Chats haben positive IDs, Gruppen haben negative IDs (z.B. -100...)
+                try:
+                    chat_id_int = int(source_group)
+                    # Wenn positive ID, könnte es ein privater Chat sein
+                    if chat_id_int > 0:
+                        # Versuche als User-ID zu laden
+                        try:
+                            from telethon.tl.types import User
+                            source_entity = await client.get_entity(chat_id_int)
+                            if isinstance(source_entity, User):
+                                # Es ist ein privater Chat, kein Beitritt nötig
+                                # Aber wir können trotzdem versuchen, die Nachricht zu laden
+                                pass
+                        except:
+                            pass
+                except ValueError:
+                    pass
+                
+                # Wenn immer noch nicht gefunden, versuche beizutreten (nur für Gruppen)
+                if 'source_entity' not in locals() or source_entity is None:
+                    # Prüfe ob es eine Gruppe sein könnte (negative ID oder Username)
+                    is_group = False
+                    try:
+                        chat_id_int = int(source_group)
+                        if chat_id_int < 0:
+                            is_group = True
+                    except:
+                        # Username oder Einladungslink - könnte Gruppe sein
+                        if not source_group.startswith("http") and not source_group.startswith("t.me/"):
+                            is_group = True
+                    
+                    if is_group:
+                        join_result = await self.join_group(account_id, source_group)
+                        if not join_result.get("success"):
+                            return {
+                                "success": False,
+                                "error": f"Quell-Gruppe nicht gefunden und Beitritt fehlgeschlagen: {join_result.get('error')}"
+                            }
+                        # Versuche Entity erneut zu laden
+                        try:
+                            source_entity = await client.get_entity(source_group)
+                        except:
+                            return {
+                                "success": False,
+                                "error": f"Quell-Gruppe nicht gefunden: {source_group}"
+                            }
+                    else:
+                        return {
+                            "success": False,
+                            "error": f"Quell-Chat nicht gefunden: {source_group}. Fehler: {error_msg}"
+                        }
+            
+            # Prüfe ob Nachricht existiert
+            try:
+                # Konvertiere message_id zu int, falls es ein String ist
+                # Telegram Message-IDs können sehr groß sein, daher sicherstellen dass es als int behandelt wird
+                msg_id = int(message_id) if not isinstance(message_id, int) else message_id
+                
+                # Versuche Nachricht zu laden
+                message = None
+                error_str = None  # Initialisiere error_str
+                
+                try:
+                    # get_messages kann eine Liste oder einzelne Nachricht zurückgeben
+                    result = await client.get_messages(source_entity, ids=msg_id)
+                    
+                    # Prüfe ob es eine Liste ist
+                    if isinstance(result, list):
+                        if len(result) > 0:
+                            message = result[0]
+                        else:
+                            message = None
+                    else:
+                        message = result
+                        
+                except Exception as msg_error:
+                    error_str = str(msg_error)
+                    # Bei privaten Chats kann es sein, dass wir die Nachricht nicht direkt laden können
+                    # Versuche alternativ über iter_messages
+                    if "source_entity" in locals() and hasattr(source_entity, 'id'):
+                        # Versuche über iter_messages
+                        try:
+                            found = False
+                            async for msg in client.iter_messages(source_entity, limit=1000):
+                                if msg.id == msg_id:
+                                    message = msg
+                                    found = True
+                                    break
+                            if not found:
+                                # error_str ist bereits gesetzt
+                                return {
+                                    "success": False,
+                                    "error": f"Nachricht mit ID {message_id} nicht gefunden. Möglicherweise hast du keinen Zugriff auf diese Nachricht. Fehler: {error_str}"
+                                }
+                        except Exception as iter_error:
+                            return {
+                                "success": False,
+                                "error": f"Fehler beim Laden der Nachricht: {str(iter_error)}"
+                            }
+                    else:
+                        return {
+                            "success": False,
+                            "error": f"Fehler beim Laden der Nachricht: {error_str}"
+                        }
+                
+                # Prüfe ob Nachricht gefunden wurde
+                if message is None:
+                    # Versuche mit iter_messages und größerem Limit
+                    try:
+                        found = False
+                        # Erhöhe Limit für private Chats
+                        search_limit = 10000
+                        async for msg in client.iter_messages(source_entity, limit=search_limit):
+                            if msg.id == msg_id:
+                                message = msg
+                                found = True
+                                break
+                        
+                        if not found:
+                            # Prüfe ob es ein privater Chat ist
+                            is_private = False
+                            try:
+                                chat_id_int = int(source_group)
+                                if chat_id_int > 0:
+                                    is_private = True
+                            except:
+                                pass
+                            
+                            error_msg = f"Nachricht mit ID {msg_id} nicht gefunden im Chat {source_group}"
+                            if is_private:
+                                error_msg += "\n\nMögliche Ursachen für private Chats:"
+                                error_msg += "\n- Die Nachricht wurde gelöscht"
+                                error_msg += "\n- Die Nachricht ist zu alt (nicht mehr im Cache)"
+                                error_msg += "\n- Der Account hat keinen Zugriff auf diese Nachricht"
+                                error_msg += "\n- Die Message-ID ist falsch"
+                            else:
+                                error_msg += "\n\nMögliche Ursachen:"
+                                error_msg += "\n- Die Nachricht wurde gelöscht"
+                                error_msg += "\n- Der Account ist nicht in der Gruppe"
+                                error_msg += "\n- Die Nachricht ist zu alt"
+                                error_msg += "\n- Die Message-ID ist falsch"
+                            
+                            if error_str:
+                                error_msg += f"\n\nTechnischer Fehler: {error_str}"
+                            
+                            return {
+                                "success": False,
+                                "error": error_msg
+                            }
+                    except Exception as iter_error:
+                        return {
+                            "success": False,
+                            "error": f"Fehler beim Suchen der Nachricht: {str(iter_error)}"
+                        }
+                    
+                # Prüfe ob die Message-ID übereinstimmt (sicherheitshalber)
+                if hasattr(message, 'id') and message.id != msg_id:
+                    # Versuche nochmal mit iter_messages
+                    try:
+                        found = False
+                        async for msg in client.iter_messages(source_entity, limit=10000):
+                            if msg.id == msg_id:
+                                message = msg
+                                found = True
+                                break
+                        if not found:
+                            return {
+                                "success": False,
+                                "error": f"Nachricht mit ID {msg_id} nicht gefunden. Geladene Nachricht hat ID: {message.id if hasattr(message, 'id') else 'N/A'}"
+                            }
+                    except Exception as iter_error:
+                        return {
+                            "success": False,
+                            "error": f"Fehler beim Laden der Nachricht: {str(iter_error)}"
+                        }
+                        
+            except ValueError as ve:
+                return {
+                    "success": False,
+                    "error": f"Ungültige Message-ID: {message_id}. Fehler: {str(ve)}"
+                }
+            except Exception as e:
+                return {
+                    "success": False,
+                    "error": f"Fehler beim Laden der Nachricht: {str(e)}"
+                }
+            
+            # Weiterleiten an alle Ziel-Gruppen
+            # Stelle sicher, dass message_id als int behandelt wird
+            msg_id = int(message_id) if not isinstance(message_id, int) else message_id
+            
+            # Validiere dass die geladene Nachricht die richtige ID hat
+            if hasattr(message, 'id'):
+                if message.id != msg_id:
+                    # Die geladene Nachricht hat nicht die erwartete ID
+                    # Versuche nochmal mit iter_messages und größerem Limit
+                    try:
+                        found = False
+                        async for msg in client.iter_messages(source_entity, limit=10000):
+                            if msg.id == msg_id:
+                                message = msg
+                                found = True
+                                break
+                        if not found:
+                            return {
+                                "success": False,
+                                "error": f"Nachricht mit ID {msg_id} nicht gefunden. Geladene Nachricht hat ID: {message.id}"
+                            }
+                    except Exception as iter_error:
+                        return {
+                            "success": False,
+                            "error": f"Fehler beim Suchen der Nachricht: {str(iter_error)}"
+                        }
+            
+            for target_group in target_groups:
+                try:
+                    target_entity = await client.get_entity(target_group)
+                    
+                    # Weiterleiten - verwende die geladene Nachricht direkt (besser als nur ID)
+                    try:
+                        # Versuche mit Message-Objekt (besser)
+                        await client.forward_messages(
+                            entity=target_entity,
+                            messages=message,
+                            from_peer=source_entity
+                        )
+                    except Exception as forward_error:
+                        # Fallback: Versuche mit Message-ID
+                        error_str = str(forward_error)
+                        try:
+                            await client.forward_messages(
+                                entity=target_entity,
+                                messages=msg_id,
+                                from_peer=source_entity
+                            )
+                        except Exception as forward_error2:
+                            raise Exception(f"Fehler beim Weiterleiten: {error_str}. Fallback-Fehler: {str(forward_error2)}")
+                    
+                    results["forwarded"] += 1
+                    
+                    # Rate Limiting zwischen Ziel-Gruppen
+                    if target_group != target_groups[-1]:
+                        await asyncio.sleep(delay)
+                
+                except FloodWaitError as e:
+                    results["failed"] += 1
+                    results["errors"].append({
+                        "target": target_group,
+                        "error": f"FloodWait: {e.seconds}s"
+                    })
+                    await asyncio.sleep(e.seconds)
+                
+                except Exception as e:
+                    results["failed"] += 1
+                    results["errors"].append({
+                        "target": target_group,
+                        "error": str(e)
+                    })
+        
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e)
+            }
+        
+        return results
+    
+    async def join_group(self, account_id: int, group_entity: str) -> dict:
+        """
+        Tritt einer Gruppe bei
+        
+        Args:
+            account_id: Account-ID
+            group_entity: Chat-ID, Username oder Einladungslink
+            
+        Returns:
+            Dict mit success und error
+        """
+        if account_id not in self.clients:
+            return {
+                "success": False,
+                "error": "Account nicht verbunden"
+            }
+        
+        client = self.clients[account_id]
+        
+        try:
+            # Versuche Entity zu finden
+            try:
+                entity = await client.get_entity(group_entity)
+            except ValueError:
+                # Versuche über Username oder Einladungslink
+                if group_entity.startswith("http") or group_entity.startswith("t.me/"):
+                    # Einladungslink - extrahiere Hash
+                    try:
+                        # Format: https://t.me/joinchat/HASH oder t.me/joinchat/HASH
+                        if "/joinchat/" in group_entity:
+                            invite_hash = group_entity.split("/joinchat/")[-1].split("?")[0]
+                        elif "/+" in group_entity:
+                            invite_hash = group_entity.split("/+")[-1].split("?")[0]
+                        else:
+                            invite_hash = group_entity.split("/")[-1].split("?")[0]
+                        
+                        result = await client(ImportChatInviteRequest(invite_hash))
+                        entity = result.chats[0] if result.chats else None
+                        if not entity:
+                            return {
+                                "success": False,
+                                "error": "Ungültiger Einladungslink"
+                            }
+                    except Exception as e:
+                        return {
+                            "success": False,
+                            "error": f"Fehler beim Beitreten über Einladungslink: {str(e)}"
+                        }
+                else:
+                    return {
+                        "success": False,
+                        "error": f"Gruppe nicht gefunden: {group_entity}"
+                    }
+            
+            # Prüfe ob Account bereits Mitglied ist
+            try:
+                me = await client.get_me()
+                if isinstance(entity, Channel):
+                    # Für Kanäle/Supergruppen
+                    try:
+                        participant = await client(GetParticipantRequest(entity, me))
+                        if participant:
+                            return {
+                                "success": True,
+                                "message": "Account ist bereits Mitglied der Gruppe"
+                            }
+                    except:
+                        pass  # Nicht Mitglied, versuche beizutreten
+                    
+                    # Versuche beizutreten
+                    try:
+                        await client(InviteToChannelRequest(
+                            channel=entity,
+                            users=[me]
+                        ))
+                        return {
+                            "success": True,
+                            "message": "Erfolgreich der Gruppe beigetreten"
+                        }
+                    except Exception as e:
+                        return {
+                            "success": False,
+                            "error": f"Fehler beim Beitreten: {str(e)}. Möglicherweise benötigt die Gruppe eine Einladung."
+                        }
+                else:
+                    # Für normale Gruppen
+                    try:
+                        await client(AddChatUserRequest(
+                            chat_id=entity.id,
+                            user_id=me,
+                            fwd_limit=10
+                        ))
+                        return {
+                            "success": True,
+                            "message": "Erfolgreich der Gruppe beigetreten"
+                        }
+                    except Exception as e:
+                        # Versuche über Username
+                        if hasattr(entity, 'username') and entity.username:
+                            try:
+                                await client(AddChatUserRequest(
+                                    chat_id=entity.username,
+                                    user_id=me,
+                                    fwd_limit=10
+                                ))
+                                return {
+                                    "success": True,
+                                    "message": "Erfolgreich der Gruppe beigetreten"
+                                }
+                            except Exception as e2:
+                                return {
+                                    "success": False,
+                                    "error": f"Fehler beim Beitreten: {str(e2)}. Möglicherweise benötigt die Gruppe eine Einladung."
+                                }
+                        else:
+                            return {
+                                "success": False,
+                                "error": f"Fehler beim Beitreten: {str(e)}. Möglicherweise benötigt die Gruppe eine Einladung."
+                            }
+            
+            except Exception as e:
+                return {
+                    "success": False,
+                    "error": f"Unerwarteter Fehler: {str(e)}"
+                }
+        
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"Fehler: {str(e)}"
+            }
+    
     async def get_group_messages(
         self,
         account_id: int,
         group_entity: str,
-        limit: int = 100
-    ) -> List[dict]:
+        limit: int = 100,
+        auto_join: bool = True
+    ) -> dict:
         """
         Ruft Nachrichten aus einer Gruppe ab
         
@@ -874,19 +1608,85 @@ class AccountManager:
             account_id: Account-ID
             group_entity: Chat-ID oder Username
             limit: Maximale Anzahl Nachrichten
+            auto_join: Automatisch beitreten, wenn nicht Mitglied
             
         Returns:
-            Liste von Nachrichten mit IDs und Metadaten
+            Dict mit messages (Liste) und error (optional)
         """
         if account_id not in self.clients:
-            return []
+            return {
+                "messages": [],
+                "error": "Account nicht verbunden"
+            }
         
         client = self.clients[account_id]
         messages = []
         
         try:
-            entity = await client.get_entity(group_entity)
+            # Versuche Entity zu finden
+            try:
+                entity = await client.get_entity(group_entity)
+            except ValueError as e:
+                error_msg = str(e)
+                # Prüfe ob es ein "Cannot find entity" Fehler ist
+                if "Cannot find" in error_msg or "No entity" in error_msg:
+                    # Versuche beizutreten, wenn auto_join aktiviert ist
+                    if auto_join:
+                        join_result = await self.join_group(account_id, group_entity)
+                        if not join_result.get("success"):
+                            return {
+                                "messages": [],
+                                "error": f"Gruppe nicht gefunden und Beitritt fehlgeschlagen: {join_result.get('error')}"
+                            }
+                        # Versuche Entity erneut zu laden
+                        try:
+                            entity = await client.get_entity(group_entity)
+                        except:
+                            return {
+                                "messages": [],
+                                "error": f"Gruppe nicht gefunden. Chat-ID: {group_entity}"
+                            }
+                    else:
+                        return {
+                            "messages": [],
+                            "error": f"Gruppe nicht gefunden. Möglicherweise ist der Account nicht in der Gruppe oder die Chat-ID ist falsch. Chat-ID: {group_entity}"
+                        }
+                else:
+                    return {
+                        "messages": [],
+                        "error": f"Fehler beim Laden der Gruppe: {error_msg}"
+                    }
             
+            # Prüfe ob Account Zugriff auf die Gruppe hat
+            try:
+                # Versuche eine Nachricht abzurufen um Zugriff zu prüfen
+                async for message in client.iter_messages(entity, limit=1):
+                    break  # Nur prüfen ob Zugriff vorhanden
+            except Exception as access_error:
+                # Versuche beizutreten, wenn auto_join aktiviert ist
+                if auto_join:
+                    join_result = await self.join_group(account_id, group_entity)
+                    if not join_result.get("success"):
+                        return {
+                            "messages": [],
+                            "error": f"Kein Zugriff auf die Gruppe und Beitritt fehlgeschlagen: {join_result.get('error')}"
+                        }
+                    # Versuche erneut Nachrichten abzurufen
+                    try:
+                        async for message in client.iter_messages(entity, limit=1):
+                            break
+                    except:
+                        return {
+                            "messages": [],
+                            "error": f"Kein Zugriff auf die Gruppe. Fehler: {str(access_error)}"
+                        }
+                else:
+                    return {
+                        "messages": [],
+                        "error": f"Kein Zugriff auf die Gruppe. Möglicherweise ist der Account nicht Mitglied. Fehler: {str(access_error)}"
+                    }
+            
+            # Lade Nachrichten
             async for message in client.iter_messages(entity, limit=limit):
                 msg_info = {
                     "id": message.id,
@@ -898,11 +1698,19 @@ class AccountManager:
                     "media": message.media is not None
                 }
                 messages.append(msg_info)
+            
+            return {
+                "messages": messages,
+                "error": None
+            }
         
         except Exception as e:
-            print(f"Fehler beim Abrufen der Nachrichten: {e}")
-        
-        return messages
+            error_msg = str(e)
+            print(f"Fehler beim Abrufen der Nachrichten: {error_msg}")
+            return {
+                "messages": [],
+                "error": f"Fehler beim Laden der Nachrichten: {error_msg}"
+            }
     
     async def warm_account_read_messages(
         self,
@@ -1329,9 +2137,32 @@ class AccountManager:
             await asyncio.sleep(2)  # Warte auf Antwort
             
             # Schritt 3: Sende Bot-Username
-            # Stelle sicher, dass Username mit "bot" endet
-            if not bot_username.lower().endswith("bot"):
-                bot_username = bot_username.lower().rstrip("bot") + "bot"
+            # Validiere und bereinige Bot-Username gemäß Telegram-Richtlinien:
+            # - Muss mit "bot" enden
+            # - Nur a-z, 0-9, _ erlaubt
+            # - 5-32 Zeichen lang
+            
+            # Konvertiere zu Kleinbuchstaben
+            bot_username = bot_username.lower()
+            
+            # Entferne alle ungültigen Zeichen (nur a-z, 0-9, _ erlaubt)
+            bot_username = ''.join(c for c in bot_username if c.isalnum() or c == '_')
+            
+            # Stelle sicher, dass Username auf "_bot" endet (nicht nur "bot")
+            if not bot_username.endswith("_bot"):
+                # Entferne "bot" oder "_bot" falls bereits vorhanden (um Duplikate zu vermeiden)
+                bot_username = bot_username.rstrip("_bot").rstrip("bot")
+                bot_username = bot_username + "_bot"
+            
+            # Stelle sicher, dass Username zwischen 5 und 32 Zeichen lang ist
+            if len(bot_username) < 5:
+                # Füge Ziffern hinzu falls zu kurz
+                padding_needed = 5 - len(bot_username)
+                bot_username = bot_username[:-4] + "0" * padding_needed + "_bot"
+            elif len(bot_username) > 32:
+                # Kürze auf max 32 Zeichen (behalte "_bot" Endung)
+                max_base_length = 28  # 32 - 4 ("_bot")
+                bot_username = bot_username[:max_base_length] + "_bot"
             
             await client.send_message(botfather, bot_username)
             await asyncio.sleep(3)  # Warte auf Token

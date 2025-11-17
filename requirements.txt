@@ -15,4 +15,5 @@ requests>=2.31.0
 psycopg2-binary>=2.9.0  # PostgreSQL Support (optional)
 slowapi>=0.1.9  # Rate Limiting
 cryptography>=41.0.0  # Für Proxy-Verschlüsselung
+TGSessionsConverter>=0.0.3  # Für tdata zu Telethon Session Konvertierung
 

@@ -8,6 +8,10 @@ export default function UserScraper({ accounts, groups, onUpdate }) {
   const [scraping, setScraping] = useState(false)
   const [inviting, setInviting] = useState(false)
   const [selectedUsers, setSelectedUsers] = useState([])
+  const [scrapeAccountGroups, setScrapeAccountGroups] = useState([])  // Gruppen des ausgewählten Scraping-Accounts
+  const [inviteAccountGroups, setInviteAccountGroups] = useState([])  // Gruppen des ausgewählten Einladungs-Accounts
+  const [loadingScrapeGroups, setLoadingScrapeGroups] = useState(false)
+  const [loadingInviteGroups, setLoadingInviteGroups] = useState(false)
   const [scrapeConfig, setScrapeConfig] = useState({
     account_id: '',
     group_id: '',
@@ -16,8 +20,10 @@ export default function UserScraper({ accounts, groups, onUpdate }) {
   const [inviteConfig, setInviteConfig] = useState({
     account_id: '',
     target_group_id: '',
-    delay: 2.0
+    delay: 2.0,
+    invite_method: 'admin'  // 'admin' oder 'invite_link'
   })
+  const [usernameList, setUsernameList] = useState('')  // Username-Liste (eine pro Zeile)
 
   const handleScrape = async () => {
     if (!scrapeConfig.account_id || !scrapeConfig.group_id) {
@@ -27,9 +33,12 @@ export default function UserScraper({ accounts, groups, onUpdate }) {
     
     setScraping(true)
     try {
+      // Verwende chat_id direkt, wenn es aus accountGroups kommt
+      const groupEntity = scrapeConfig.group_id
+      
       const response = await axios.post(`${API_BASE}/scrape/group-members`, {
         account_id: parseInt(scrapeConfig.account_id),
-        group_id: parseInt(scrapeConfig.group_id),
+        group_entity: groupEntity,  // Chat-ID oder Username
         limit: parseInt(scrapeConfig.limit)
       })
       
@@ -62,29 +71,86 @@ export default function UserScraper({ accounts, groups, onUpdate }) {
       return
     }
     
-    if (selectedUsers.length === 0) {
-      alert('Bitte mindestens einen User auswählen')
+    // Prüfe ob Username-Liste oder gescrapte User ausgewählt
+    const hasUsernameList = usernameList.trim().length > 0
+    const hasSelectedUsers = selectedUsers.length > 0
+    
+    if (!hasUsernameList && !hasSelectedUsers) {
+      alert('Bitte mindestens einen User auswählen oder Username-Liste eingeben')
       return
     }
     
-    if (!confirm(`Wirklich ${selectedUsers.length} User einladen?`)) {
+    let userCount = 0
+    if (hasUsernameList) {
+      const usernames = usernameList.split('\n').filter(u => u.trim().length > 0)
+      userCount = usernames.length
+    } else {
+      userCount = selectedUsers.length
+    }
+    
+    if (!confirm(`Wirklich ${userCount} User einladen?`)) {
       return
     }
     
     setInviting(true)
     try {
-      const response = await axios.post(`${API_BASE}/invite/from-scraped`, {
-        account_id: parseInt(inviteConfig.account_id),
-        group_id: parseInt(inviteConfig.target_group_id),
-        scraped_user_ids: selectedUsers,
-        delay: parseFloat(inviteConfig.delay)
-      })
+      let response
       
-      alert(`Einladungen abgeschlossen!\n✅ Erfolgreich: ${response.data.success}\n❌ Fehlgeschlagen: ${response.data.failed}`)
-      
-      if (response.data.errors && response.data.errors.length > 0) {
-        console.log('Fehler:', response.data.errors)
+      if (hasUsernameList) {
+        // Verwende Username-Liste
+        const usernames = usernameList.split('\n')
+          .map(u => u.trim())
+          .filter(u => u.length > 0)
+        
+        // Verwende chat_id direkt, wenn es aus accountGroups kommt
+        const groupEntity = inviteConfig.target_group_id
+        
+        response = await axios.post(`${API_BASE}/invite/users`, {
+          account_id: parseInt(inviteConfig.account_id),
+          group_entity: groupEntity,  // Chat-ID oder Username
+          usernames: usernames,
+          delay: parseFloat(inviteConfig.delay),
+          invite_method: inviteConfig.invite_method
+        })
+      } else {
+        // Verwende gescrapte User
+        response = await axios.post(`${API_BASE}/invite/from-scraped`, {
+          account_id: parseInt(inviteConfig.account_id),
+          group_id: parseInt(inviteConfig.target_group_id),
+          scraped_user_ids: selectedUsers,
+          delay: parseFloat(inviteConfig.delay)
+        })
       }
+      
+      // Prüfe ob die Antwort ein Error-Feld hat (bei Fehler)
+      // Backend gibt bei Fehler: {"success": false, "error": "..."}
+      // Backend gibt bei Erfolg: {"success": 0, "failed": 0, "total": X, ...}
+      if (response.data.error || (response.data.success === false)) {
+        alert(`Fehler: ${response.data.error || 'Unbekannter Fehler'}`)
+        return
+      }
+      
+      // Normale Antwort-Struktur (success ist hier eine Zahl, nicht Boolean)
+      const successCount = typeof response.data.success === 'number' ? response.data.success : 0
+      const failedCount = typeof response.data.failed === 'number' ? response.data.failed : 0
+      const totalCount = typeof response.data.total === 'number' ? response.data.total : 0
+      
+      let message = `Einladungen abgeschlossen!\n✅ Erfolgreich: ${successCount}\n❌ Fehlgeschlagen: ${failedCount}`
+      
+      if (totalCount > 0) {
+        message += `\n📊 Gesamt: ${totalCount}`
+      }
+      
+      if (response.data.invite_link) {
+        message += `\n\n🔗 Einladungslink: ${response.data.invite_link}`
+      }
+      
+      if (response.data.errors && Array.isArray(response.data.errors) && response.data.errors.length > 0) {
+        message += `\n\n⚠️ ${response.data.errors.length} Fehler aufgetreten (siehe Konsole)`
+        console.log('Detaillierte Fehler:', response.data.errors)
+      }
+      
+      alert(message)
     } catch (error) {
       alert('Fehler: ' + (error.response?.data?.detail || error.message))
     } finally {
@@ -109,6 +175,74 @@ export default function UserScraper({ accounts, groups, onUpdate }) {
       setSelectedUsers(scrapedUsers.map(u => u.id))
     }
   }
+
+  // Lade Gruppen eines Accounts für Scraping
+  const loadScrapeAccountGroups = async (accountId) => {
+    if (!accountId) {
+      setScrapeAccountGroups([])
+      return
+    }
+    
+    const account = accounts.find(acc => acc.id === parseInt(accountId))
+    if (!account || !account.connected) {
+      setScrapeAccountGroups([])
+      return
+    }
+    
+    setLoadingScrapeGroups(true)
+    try {
+      const response = await axios.get(`${API_BASE}/accounts/${accountId}/groups`)
+      setScrapeAccountGroups(response.data)
+    } catch (error) {
+      console.error('Fehler beim Laden der Gruppen:', error)
+      setScrapeAccountGroups([])
+    } finally {
+      setLoadingScrapeGroups(false)
+    }
+  }
+
+  // Lade Gruppen eines Accounts für Einladung
+  const loadInviteAccountGroups = async (accountId) => {
+    if (!accountId) {
+      setInviteAccountGroups([])
+      return
+    }
+    
+    const account = accounts.find(acc => acc.id === parseInt(accountId))
+    if (!account || !account.connected) {
+      setInviteAccountGroups([])
+      return
+    }
+    
+    setLoadingInviteGroups(true)
+    try {
+      const response = await axios.get(`${API_BASE}/accounts/${accountId}/groups`)
+      setInviteAccountGroups(response.data)
+    } catch (error) {
+      console.error('Fehler beim Laden der Gruppen:', error)
+      setInviteAccountGroups([])
+    } finally {
+      setLoadingInviteGroups(false)
+    }
+  }
+
+  // Lade Gruppen, wenn Account für Scraping ausgewählt wird
+  React.useEffect(() => {
+    if (scrapeConfig.account_id) {
+      loadScrapeAccountGroups(scrapeConfig.account_id)
+    } else {
+      setScrapeAccountGroups([])
+    }
+  }, [scrapeConfig.account_id])
+
+  // Lade Gruppen, wenn Account für Einladung ausgewählt wird
+  React.useEffect(() => {
+    if (inviteConfig.account_id) {
+      loadInviteAccountGroups(inviteConfig.account_id)
+    } else {
+      setInviteAccountGroups([])
+    }
+  }, [inviteConfig.account_id])
 
   React.useEffect(() => {
     loadScrapedUsers()
@@ -153,14 +287,32 @@ export default function UserScraper({ accounts, groups, onUpdate }) {
               <select
                 value={scrapeConfig.group_id}
                 onChange={(e) => setScrapeConfig({ ...scrapeConfig, group_id: e.target.value })}
+                disabled={loadingScrapeGroups || !scrapeConfig.account_id}
               >
                 <option value="">Bitte wählen...</option>
-                {groups.map(group => (
-                  <option key={group.id} value={group.id}>
-                    {group.name}
-                  </option>
-                ))}
+                {loadingScrapeGroups ? (
+                  <option value="" disabled>Lade Gruppen...</option>
+                ) : scrapeAccountGroups.length > 0 ? (
+                  scrapeAccountGroups.map(group => (
+                    <option key={group.id} value={group.chat_id}>
+                      {group.name} {group.username ? `(@${group.username})` : ''}
+                    </option>
+                  ))
+                ) : scrapeConfig.account_id ? (
+                  <option value="" disabled>Keine Gruppen gefunden</option>
+                ) : (
+                  groups.map(group => (
+                    <option key={group.id} value={group.id}>
+                      {group.name}
+                    </option>
+                  ))
+                )}
               </select>
+              {scrapeConfig.account_id && !loadingScrapeGroups && scrapeAccountGroups.length === 0 && (
+                <small style={{ color: '#666', display: 'block', marginTop: '5px' }}>
+                  Keine Gruppen für diesen Account gefunden. Stelle sicher, dass der Account verbunden ist.
+                </small>
+              )}
             </div>
             <div className="form-group">
               <label>Limit (max. User)</label>
@@ -202,14 +354,60 @@ export default function UserScraper({ accounts, groups, onUpdate }) {
               <select
                 value={inviteConfig.target_group_id}
                 onChange={(e) => setInviteConfig({ ...inviteConfig, target_group_id: e.target.value })}
+                disabled={loadingInviteGroups || !inviteConfig.account_id}
               >
                 <option value="">Bitte wählen...</option>
-                {groups.map(group => (
-                  <option key={group.id} value={group.id}>
-                    {group.name}
-                  </option>
-                ))}
+                {loadingInviteGroups ? (
+                  <option value="" disabled>Lade Gruppen...</option>
+                ) : inviteAccountGroups.length > 0 ? (
+                  inviteAccountGroups.map(group => (
+                    <option key={group.id} value={group.chat_id}>
+                      {group.name} {group.username ? `(@${group.username})` : ''}
+                    </option>
+                  ))
+                ) : inviteConfig.account_id ? (
+                  <option value="" disabled>Keine Gruppen gefunden</option>
+                ) : (
+                  groups.map(group => (
+                    <option key={group.id} value={group.id}>
+                      {group.name}
+                    </option>
+                  ))
+                )}
               </select>
+              {inviteConfig.account_id && !loadingInviteGroups && inviteAccountGroups.length === 0 && (
+                <small style={{ color: '#666', display: 'block', marginTop: '5px' }}>
+                  Keine Gruppen für diesen Account gefunden. Stelle sicher, dass der Account verbunden ist.
+                </small>
+              )}
+            </div>
+            <div className="form-group">
+              <label>Einladungsmethode</label>
+              <select
+                value={inviteConfig.invite_method}
+                onChange={(e) => setInviteConfig({ ...inviteConfig, invite_method: e.target.value })}
+              >
+                <option value="admin">Als Admin einladen (direkt)</option>
+                <option value="invite_link">Invite-Link erstellen und per DM senden</option>
+              </select>
+              <small style={{ color: '#666', display: 'block', marginTop: '5px' }}>
+                {inviteConfig.invite_method === 'admin' 
+                  ? 'Direkte Einladung als Admin (Account muss Admin-Rechte haben)'
+                  : 'Erstellt einen Einladungslink und sendet diesen per DM an alle User'}
+              </small>
+            </div>
+            <div className="form-group">
+              <label>Username-Liste (eine pro Zeile, mit oder ohne @)</label>
+              <textarea
+                rows="5"
+                placeholder="username1&#10;username2&#10;@username3&#10;..."
+                value={usernameList}
+                onChange={(e) => setUsernameList(e.target.value)}
+                style={{ width: '100%', fontFamily: 'monospace', fontSize: '14px' }}
+              />
+              <small style={{ color: '#666', display: 'block', marginTop: '5px' }}>
+                Alternativ: Wähle gescrapte User aus der Liste unten aus
+              </small>
             </div>
             <div className="form-group">
               <label>Delay zwischen Einladungen (Sekunden)</label>
@@ -225,9 +423,18 @@ export default function UserScraper({ accounts, groups, onUpdate }) {
             <button
               className="btn btn-success"
               onClick={handleInvite}
-              disabled={inviting || selectedUsers.length === 0 || !inviteConfig.account_id || !inviteConfig.target_group_id}
+              disabled={
+                inviting || 
+                (!usernameList.trim() && selectedUsers.length === 0) || 
+                !inviteConfig.account_id || 
+                !inviteConfig.target_group_id
+              }
             >
-              {inviting ? 'Lade ein...' : `📨 ${selectedUsers.length} User einladen`}
+              {inviting ? 'Lade ein...' : (
+                `📨 ${usernameList.trim() 
+                  ? usernameList.split('\n').filter(u => u.trim()).length 
+                  : selectedUsers.length} User einladen`
+              )}
             </button>
           </div>
         </div>

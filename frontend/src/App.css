@@ -2,50 +2,6 @@
 
 /* Mobile Styles - Dropdown-Menü wird in DropdownMenu.css behandelt */
 
-.container.mobile .professional-header .header-content {
-  flex-direction: column;
-  gap: 15px;
-}
-
-.container.mobile .professional-header h1 {
-  font-size: 1.5rem;
-}
-
-.container.mobile .professional-header .header-title img {
-  height: 36px !important;
-}
-
-.container.mobile .professional-header p {
-  font-size: 1rem;
-}
-
-.professional-header .header-content {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: var(--spacing-lg);
-}
-
-.professional-header .header-title {
-  flex: 1;
-}
-
-.professional-header .header-title h1 {
-  font-size: 2.5rem;
-  font-weight: 700;
-  margin: 0;
-  line-height: 1.2;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  color: white;
-}
-
-.professional-header .header-title p {
-  font-size: 1.125rem;
-  opacity: 0.95;
-  margin: 0;
-  font-weight: 400;
-}
-
 /* Tablet Styles - Dropdown-Menü wird in DropdownMenu.css behandelt */
 
 /* Responsive Container */
@@ -203,5 +159,68 @@
     width: 95%;
     padding: 20px;
     max-height: 85vh;
+    margin: 10px;
+    border-radius: var(--radius-lg);
+  }
+
+  .modal-header {
+    flex-wrap: wrap;
+    gap: var(--spacing-sm);
+  }
+
+  .modal-header h3 {
+    font-size: 1.25rem;
+  }
+
+  .close-btn {
+    min-width: 44px;
+    min-height: 44px;
+    touch-action: manipulation;
+  }
+}
+
+/* Mobile-specific improvements */
+@media (max-width: 767px) {
+  /* Prevent text selection on buttons */
+  .btn,
+  button {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    touch-action: manipulation;
+  }
+
+  /* Larger touch targets */
+  .btn-small {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 12px 16px;
+  }
+
+  /* Better spacing on mobile */
+  .card {
+    margin-bottom: var(--spacing-md);
+  }
+
+  /* Scrollable content */
+  .table-wrapper {
+    -webkit-overflow-scrolling: touch;
+    overflow-x: auto;
+    width: 100%;
+  }
+
+  /* Form improvements */
+  .form-group input,
+  .form-group select,
+  .form-group textarea {
+    min-height: 44px;
+    padding: 12px;
+  }
+
+  /* Better modal scrolling */
+  .modal-content {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
   }
 }

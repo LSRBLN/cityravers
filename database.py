@@ -26,6 +26,8 @@ class Account(Base):
     session_name = Column(String, unique=True)  # Nur für User-Accounts
     session_file_path = Column(String)  # Pfad zur hochgeladenen Session-Datei
     tdata_path = Column(String)  # Pfad zum tdata-Ordner
+    json_metadata_path = Column(String)  # Pfad zur JSON-Metadatendatei
+    two_factor_password = Column(String)  # 2FA-Passwort (verschlüsselt gespeichert)
     proxy_id = Column(Integer, ForeignKey("proxies.id"))  # Zugewiesener Proxy
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)

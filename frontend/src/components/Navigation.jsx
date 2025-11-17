@@ -1,9 +1,11 @@
 import React from 'react'
 import { useDevice } from '../hooks/useDevice'
+import { useAuth } from '../contexts/AuthContext'
 import './Navigation.css'
 
-export default function Navigation({ activeTab, setActiveTab, isAdmin }) {
+export default function Navigation({ activeTab, setActiveTab, isAdmin, user }) {
   const { isMobile } = useDevice()
+  const { logout } = useAuth()
 
   // Quick-Access Buttons (2 Reihen)
   const quickAccessItems = [
@@ -44,8 +46,58 @@ export default function Navigation({ activeTab, setActiveTab, isAdmin }) {
     setActiveTab(itemId)
   }
 
+  // User-Statistiken für kompakte Anzeige
+  const subscription = user?.subscription || {}
+  const stats = user?.stats || {}
+
   return (
     <div className="navigation-container">
+      {/* Kompakte User-Leiste */}
+      {user && (
+        <div className="user-info-bar">
+          <div className="user-info-main">
+            <div className="user-info-header">
+              <span className="user-info-name">👤 {user.username}</span>
+              <span className="user-info-email">{user.email}</span>
+            </div>
+            <div className="user-info-stats">
+              <div className="user-stat-item">
+                <span className="user-stat-value">{stats.account_count || 0}</span>
+                <span className="user-stat-label">Accounts</span>
+                <span className="user-stat-max">/ {subscription.max_accounts || 1}</span>
+              </div>
+              <div className="user-stat-item">
+                <span className="user-stat-value">{stats.group_count || 0}</span>
+                <span className="user-stat-label">Gruppen</span>
+                <span className="user-stat-max">/ {subscription.max_groups || 5}</span>
+              </div>
+              <div className="user-stat-item">
+                <span className="user-stat-value">{subscription.max_messages_per_day || 10}</span>
+                <span className="user-stat-label">Msg/Tag</span>
+              </div>
+            </div>
+          </div>
+          <div className="user-info-actions">
+            {subscription.plan_type === 'free_trial' && (
+              <button 
+                className="user-upgrade-btn"
+                onClick={() => setActiveTab('subscriptions')}
+                title="Upgrade verfügbar"
+              >
+                🚀 Upgrade
+              </button>
+            )}
+            <button 
+              className="user-logout-btn"
+              onClick={logout}
+              title="Abmelden"
+            >
+              Abmelden
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Quick-Access Dashboard (2 Reihen) */}
       <div className="quick-access-dashboard">
         {quickAccessItems.map((row, rowIndex) => (

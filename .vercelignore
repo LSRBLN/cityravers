@@ -16,7 +16,9 @@ ENV/
 sessions/
 uploads/
 *.session
-*.json
+
+# Root vercel.json (für Backend, nicht Frontend)
+vercel.json
 
 # Logs
 *.log

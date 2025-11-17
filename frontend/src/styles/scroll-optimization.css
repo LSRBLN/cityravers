@@ -1,0 +1,203 @@
+/**
+ * Scroll-Performance Optimierungen
+ * Verhindert Flackern beim Scrollen
+ */
+
+/* Global Scroll-Optimierungen */
+* {
+  /* Hardware-Beschleunigung aktivieren */
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+}
+
+/* Container mit optimiertem Scrolling */
+.container,
+.card,
+.modal-content,
+.professional-card {
+  /* GPU-Beschleunigung */
+  -webkit-transform: translate3d(0, 0, 0);
+  transform: translate3d(0, 0, 0);
+  /* Will-change für bessere Performance */
+  will-change: scroll-position;
+  /* Smooth Scrolling */
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  /* Backface Visibility für bessere Performance */
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  /* Perspective für 3D-Transforms */
+  -webkit-perspective: 1000px;
+  perspective: 1000px;
+}
+
+/* Scrollbare Bereiche optimieren */
+.scrollable,
+.modal-content,
+.table-wrapper {
+  /* Hardware-Beschleunigung */
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+  /* Smooth Scrolling */
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  /* Will-change */
+  will-change: scroll-position;
+}
+
+/* Verhindere Repaints während Scroll */
+.card,
+.professional-card,
+.btn,
+.modal-content {
+  /* Isolation für bessere Performance */
+  isolation: isolate;
+  /* Containment für bessere Performance */
+  contain: layout style paint;
+}
+
+/* Optimierte Transitions */
+.card,
+.professional-card,
+.btn,
+.stat-card {
+  /* Nur transform und opacity animieren (GPU-beschleunigt) */
+  transition: transform var(--transition-fast), 
+              opacity var(--transition-fast),
+              box-shadow var(--transition-fast);
+  /* Verhindere Layout-Shifts */
+  contain: layout style paint;
+}
+
+/* High-End Glassmorphism für Premium-Look */
+.glass-effect {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+}
+
+/* Premium Shadow-Effekte */
+.premium-shadow {
+  box-shadow: 
+    0 20px 60px rgba(0, 0, 0, 0.12),
+    0 8px 24px rgba(0, 0, 0, 0.08),
+    0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.premium-shadow-hover {
+  box-shadow: 
+    0 32px 80px rgba(0, 0, 0, 0.16),
+    0 12px 32px rgba(0, 0, 0, 0.12),
+    0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+/* Smooth Fade-In Animation */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px) translateZ(0);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) translateZ(0);
+  }
+}
+
+.fade-in-up {
+  animation: fadeInUp 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+/* Staggered Animation für Listen */
+.stagger-item {
+  opacity: 0;
+  animation: fadeInUp 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.stagger-item:nth-child(1) { animation-delay: 0.05s; }
+.stagger-item:nth-child(2) { animation-delay: 0.1s; }
+.stagger-item:nth-child(3) { animation-delay: 0.15s; }
+.stagger-item:nth-child(4) { animation-delay: 0.2s; }
+.stagger-item:nth-child(5) { animation-delay: 0.25s; }
+.stagger-item:nth-child(6) { animation-delay: 0.3s; }
+
+/* Premium Gradient Overlay */
+.premium-gradient-overlay {
+  position: relative;
+}
+
+.premium-gradient-overlay::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    135deg,
+    rgba(102, 126, 234, 0.05) 0%,
+    rgba(168, 85, 247, 0.05) 100%
+  );
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+/* High-End Border Glow */
+.premium-border-glow {
+  position: relative;
+}
+
+.premium-border-glow::after {
+  content: '';
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  right: -2px;
+  bottom: -2px;
+  background: linear-gradient(135deg, var(--primary-500), var(--secondary-500));
+  border-radius: inherit;
+  z-index: -1;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+  filter: blur(8px);
+}
+
+.premium-border-glow:hover::after {
+  opacity: 0.6;
+}
+
+/* Optimierte Tabellen */
+.table {
+  /* Hardware-Beschleunigung */
+  transform: translateZ(0);
+  will-change: scroll-position;
+}
+
+.table tr {
+  /* Isolation für bessere Performance */
+  isolation: isolate;
+  transition: background-color var(--transition-fast);
+}
+
+/* Optimierte Formulare */
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+  /* Verhindere Layout-Shifts */
+  contain: layout style paint;
+}
+
+/* Loading States optimieren */
+.loading {
+  /* GPU-Beschleunigung für Spinner */
+  transform: translateZ(0);
+  will-change: transform;
+}
+
+/* Empty States */
+.empty-state {
+  /* Smooth Animation */
+  animation: fadeInUp 0.4s ease-out;
+}
+

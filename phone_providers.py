@@ -1,5 +1,5 @@
 """
-Integration für Telefonnummern-Anbieter (5sim.net, sms-activate, sms-manager, getsmscode)
+Integration für Telefonnummern-Anbieter (5sim.net, sms-activate, sms-manager, getsmscode, onlinesim.io)
 """
 import requests
 import asyncio
@@ -600,6 +600,395 @@ class GetSMSCodeProvider:
                 return {
                     "success": False,
                     "error": data
+                }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e)
+            }
+
+
+class OnlineSimProvider:
+    """OnlineSim.io API Integration"""
+    
+    def __init__(self, api_key: str):
+        self.api_key = api_key
+        self.base_url = "https://onlinesim.io/api"
+    
+    async def get_balance(self) -> Dict:
+        """Gibt das Guthaben zurück"""
+        try:
+            response = requests.get(
+                f"{self.base_url}/getBalance.php",
+                params={
+                    "apikey": self.api_key
+                },
+                timeout=10
+            )
+            response.raise_for_status()
+            data = response.json()
+            
+            # OnlineSim gibt Balance direkt zurück
+            if isinstance(data, dict) and "balance" in data:
+                return {
+                    "success": True,
+                    "balance": float(data.get("balance", 0)),
+                    "currency": data.get("currency", "USD")
+                }
+            elif isinstance(data, (int, float)):
+                return {
+                    "success": True,
+                    "balance": float(data),
+                    "currency": "USD"
+                }
+            
+            return {
+                "success": False,
+                "error": f"Unerwartetes Format: {data}"
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e)
+            }
+    
+    async def get_tariffs(self, country: Optional[str] = None) -> Dict:
+        """
+        Gibt die Tarife (Preise) für Länder zurück
+        
+        Args:
+            country: Optional: Ländercode (z.B. "84" für Vietnam). Wenn None, werden alle Länder zurückgegeben.
+        """
+        try:
+            params = {
+                "apikey": self.api_key
+            }
+            if country:
+                params["country"] = country
+            
+            response = requests.get(
+                f"{self.base_url}/getTariffs.php",
+                params=params,
+                timeout=10
+            )
+            response.raise_for_status()
+            data = response.json()
+            
+            if isinstance(data, dict):
+                return {
+                    "success": True,
+                    "tariffs": data
+                }
+            elif isinstance(data, list):
+                return {
+                    "success": True,
+                    "tariffs": data
+                }
+            
+            return {
+                "success": False,
+                "error": f"Unerwartetes Format: {data}"
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e)
+            }
+    
+    async def get_countries(self) -> Dict:
+        """Gibt alle verfügbaren Länder zurück"""
+        try:
+            response = requests.get(
+                f"{self.base_url}/getNumbersStats.php",
+                params={
+                    "apikey": self.api_key
+                },
+                timeout=10
+            )
+            response.raise_for_status()
+            data = response.json()
+            
+            if isinstance(data, dict):
+                return {
+                    "success": True,
+                    "countries": data
+                }
+            elif isinstance(data, list):
+                return {
+                    "success": True,
+                    "countries": data
+                }
+            
+            return {
+                "success": False,
+                "error": f"Unerwartetes Format: {data}"
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e)
+            }
+    
+    async def buy_number(
+        self,
+        country: str = "germany",  # ISO Country Code oder Name
+        service: str = "telegram",
+        operator: Optional[str] = None,
+        max_retries: int = 3,
+        retry_delay: float = 5.0
+    ) -> Dict:
+        """
+        Kauft eine Telefonnummer mit Retry-Logik für Rate-Limiting
+        
+        Args:
+            country: Land (z.B. 'germany', 'usa', 'russia' oder ISO Code)
+            service: Service (z.B. 'telegram', 'whatsapp')
+            operator: Optional: Spezifischer Operator
+            max_retries: Maximale Anzahl Retry-Versuche
+            retry_delay: Wartezeit zwischen Retries in Sekunden (wird exponentiell erhöht)
+        """
+        # OnlineSim verwendet Country-Codes (z.B. 7 für Russland, 49 für Deutschland)
+        # Wir konvertieren Country-Namen zu Codes
+        country_map = {
+            "germany": "49",
+            "de": "49",
+            "deutschland": "49",
+            "usa": "1",
+            "us": "1",
+            "russia": "7",
+            "ru": "7",
+            "ukraine": "380",
+            "ua": "380",
+            "poland": "48",
+            "pl": "48",
+            "vietnam": "84",
+            "vn": "84"
+        }
+        
+        country_code = country_map.get(country.lower(), country)
+        
+        # Service-Mapping
+        service_map = {
+            "telegram": "telegram",
+            "tg": "telegram",
+            "whatsapp": "whatsapp",
+            "wa": "whatsapp"
+        }
+        service_code = service_map.get(service.lower(), service)
+        
+        # Retry-Logik für Rate-Limiting
+        last_error = None
+        for attempt in range(max_retries):
+            try:
+                # Hole Nummer
+                params = {
+                    "apikey": self.api_key,
+                    "service": service_code,
+                    "country": country_code
+                }
+                
+                if operator:
+                    params["operator"] = operator
+                
+                response = requests.get(
+                    f"{self.base_url}/getNumber.php",
+                    params=params,
+                    timeout=30
+                )
+                response.raise_for_status()
+                data = response.json()
+                
+                # Format: {"tzid": 123456, "number": "+79123456789"} oder Fehler
+                if isinstance(data, dict) and "tzid" in data:
+                    tzid = data.get("tzid")
+                    phone_number = data.get("number")
+                    
+                    # Normalisiere Telefonnummer (füge + hinzu falls fehlt)
+                    if phone_number and not phone_number.startswith("+"):
+                        phone_number = "+" + phone_number
+                    
+                    return {
+                        "success": True,
+                        "purchase_id": str(tzid),
+                        "phone_number": phone_number,
+                        "country": country_code,
+                        "service": service_code,
+                        "cost": None,  # Wird separat abgefragt
+                        "expires_at": datetime.utcnow() + timedelta(minutes=20)
+                    }
+                else:
+                    # Fehler von OnlineSim API
+                    error_msg = data.get("response", str(data)) if isinstance(data, dict) else str(data)
+                    last_error = error_msg
+                    
+                    # Prüfe ob es ein retry-fähiger Fehler ist
+                    retryable_errors = ["TRY_AGAIN_LATER", "NO_NUMBERS", "NO_BALANCE", "RATE_LIMIT"]
+                    is_retryable = any(err in str(error_msg).upper() for err in retryable_errors)
+                    
+                    if not is_retryable or attempt >= max_retries - 1:
+                        # Nicht retry-fähig oder letzter Versuch
+                        return {
+                            "success": False,
+                            "error": error_msg,
+                            "retryable": is_retryable
+                        }
+                    
+                    # Warte vor Retry (exponentielles Backoff)
+                    wait_time = retry_delay * (2 ** attempt)
+                    await asyncio.sleep(wait_time)
+                    continue
+                    
+            except requests.exceptions.HTTPError as e:
+                error_data = e.response.json() if e.response and e.response.headers.get('content-type', '').startswith('application/json') else {}
+                error_msg = error_data.get("response", str(e)) if error_data else str(e)
+                last_error = error_msg
+                
+                # Prüfe ob retry-fähig
+                is_retryable = e.response.status_code in [429, 503, 502] or "TRY_AGAIN" in str(error_msg).upper()
+                
+                if not is_retryable or attempt >= max_retries - 1:
+                    return {
+                        "success": False,
+                        "error": error_msg,
+                        "error_code": e.response.status_code if e.response else None,
+                        "retryable": is_retryable
+                    }
+                
+                # Warte vor Retry
+                wait_time = retry_delay * (2 ** attempt)
+                await asyncio.sleep(wait_time)
+                continue
+                
+            except Exception as e:
+                last_error = str(e)
+                if attempt >= max_retries - 1:
+                    return {
+                        "success": False,
+                        "error": str(e),
+                        "retryable": False
+                    }
+                # Warte vor Retry
+                wait_time = retry_delay * (2 ** attempt)
+                await asyncio.sleep(wait_time)
+                continue
+        
+        # Alle Retries fehlgeschlagen
+        return {
+            "success": False,
+            "error": f"Nach {max_retries} Versuchen fehlgeschlagen: {last_error}",
+            "retryable": True
+        }
+    
+    async def get_sms_code(self, purchase_id: str) -> Dict:
+        """
+        Ruft den SMS-Code ab
+        
+        Args:
+            purchase_id: TZID (Transaction ID) von OnlineSim
+        """
+        try:
+            response = requests.get(
+                f"{self.base_url}/getState.php",
+                params={
+                    "apikey": self.api_key,
+                    "tzid": purchase_id
+                },
+                timeout=10
+            )
+            response.raise_for_status()
+            data = response.json()
+            
+            # Format: {"response": "STATUS_OK", "msg": "12345", "tzid": 123456}
+            # oder {"response": "STATUS_WAIT_CODE", "tzid": 123456}
+            if isinstance(data, dict):
+                response_status = data.get("response", "")
+                sms_code = data.get("msg")
+                phone_number = data.get("number")
+                
+                if response_status == "STATUS_OK" and sms_code:
+                    return {
+                        "success": True,
+                        "status": "RECEIVED",
+                        "sms_code": sms_code,
+                        "phone_number": phone_number
+                    }
+                elif response_status == "STATUS_WAIT_CODE":
+                    return {
+                        "success": True,
+                        "status": "PENDING",
+                        "sms_code": None,
+                        "phone_number": phone_number
+                    }
+                elif response_status == "STATUS_CANCEL":
+                    return {
+                        "success": False,
+                        "status": "CANCELED",
+                        "error": "Bestellung wurde storniert"
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "error": response_status or "Unbekannter Status"
+                    }
+            
+            return {
+                "success": False,
+                "error": f"Unerwartetes Format: {data}"
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e)
+            }
+    
+    async def cancel_order(self, purchase_id: str) -> Dict:
+        """Storniert eine Bestellung"""
+        try:
+            response = requests.get(
+                f"{self.base_url}/setOperationOk.php",
+                params={
+                    "apikey": self.api_key,
+                    "tzid": purchase_id,
+                    "status": "cancel"
+                },
+                timeout=10
+            )
+            response.raise_for_status()
+            data = response.json()
+            
+            if isinstance(data, dict) and data.get("response") == "OK":
+                return {"success": True}
+            else:
+                return {
+                    "success": False,
+                    "error": data.get("response", "Unbekannter Fehler")
+                }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e)
+            }
+    
+    async def finish_order(self, purchase_id: str) -> Dict:
+        """Beendet eine Bestellung (nach erfolgreicher Verwendung)"""
+        try:
+            response = requests.get(
+                f"{self.base_url}/setOperationOk.php",
+                params={
+                    "apikey": self.api_key,
+                    "tzid": purchase_id
+                },
+                timeout=10
+            )
+            response.raise_for_status()
+            data = response.json()
+            
+            if isinstance(data, dict) and data.get("response") == "OK":
+                return {"success": True}
+            else:
+                return {
+                    "success": False,
+                    "error": data.get("response", "Unbekannter Fehler")
                 }
         except Exception as e:
             return {

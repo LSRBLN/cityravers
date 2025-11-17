@@ -3,8 +3,8 @@ import axios from 'axios'
 import { useAuth } from './contexts/AuthContext'
 import { useDevice } from './hooks/useDevice'
 import Login from './components/Login'
-import UserProfile from './components/UserProfile'
-import DropdownMenu from './components/DropdownMenu'
+import Navigation from './components/Navigation'
+import Dashboard from './components/Dashboard'
 import AccountManager from './components/AccountManager'
 import GroupManager from './components/GroupManager'
 import ScheduledMessages from './components/ScheduledMessages'
@@ -16,6 +16,7 @@ import ProxyManager from './components/ProxyManager'
 import AccountToGroups from './components/AccountToGroups'
 import SubscriptionPlans from './components/SubscriptionPlans'
 import AdminDashboard from './components/AdminDashboard'
+import Handbook from './components/Handbook'
 import './App.css'
 
 import { API_BASE } from './config/api'
@@ -131,42 +132,27 @@ function App() {
   }
 
   return (
-    <div className={`container ${isMobile ? 'mobile' : ''} ${isTablet ? 'tablet' : ''}`}>
-      <div className="professional-header">
-        <div className="professional-header-content">
-          <div className={`header-content ${isMobile ? 'mobile' : ''}`}>
-            <div className="header-title">
-              <h1 style={{ margin: 0 }}>Berlin City Raver - Marketing Tool</h1>
-              {!isMobile && <p>Verwaltung für Accountauswahl, Gruppenauswahl und Zeitplanung</p>}
-              {/* Logo unter dem Tool-Namen */}
-              <div style={{ 
-                marginTop: 'var(--spacing-md)',
-                display: 'flex',
-                justifyContent: 'flex-start',
-                alignItems: 'center'
-              }}>
-                <img 
-                  src="/logo.png" 
-                  alt="Berlin City Raver Logo" 
-                  style={{ 
-                    height: isMobile ? '288px' : '384px',
-                    width: 'auto',
-                    borderRadius: 'var(--radius-md)',
-                    boxShadow: 'var(--shadow-lg)',
-                    background: 'rgba(255, 255, 255, 0.95)',
-                    padding: '8px',
-                    display: 'block'
-                  }}
-                  onError={(e) => {
-                    e.target.style.display = 'none'
-                  }}
-                />
-              </div>
-            </div>
-            <UserProfile />
-          </div>
-        </div>
-      </div>
+    <div className={`container ${isMobile ? 'mobile' : ''} ${isTablet ? 'tablet' : ''}`} style={{
+      /* Scroll-Performance optimieren */
+      transform: 'translateZ(0)',
+      willChange: 'scroll-position',
+      WebkitOverflowScrolling: 'touch',
+      overscrollBehavior: 'contain'
+    }}>
+      {/* Dashboard mit Statistiken */}
+      <Dashboard 
+        accounts={accounts}
+        groups={groups}
+        scheduledMessages={scheduledMessages}
+      />
+
+      {/* Premium Navigation mit User-Info, Quick-Access und Navigationsleiste */}
+      <Navigation 
+        activeTab={activeTab} 
+        setActiveTab={setActiveTab} 
+        isAdmin={isAdmin}
+        user={user}
+      />
 
       <div className="warning-banner-modern">
         <svg fill="currentColor" viewBox="0 0 20 20">
@@ -176,15 +162,6 @@ function App() {
           <strong>Warnung:</strong> Spam verstößt gegen Telegram Nutzungsbedingungen. 
           Vorsichtig verwenden. Kann zu Account-Sperrungen führen.
         </div>
-      </div>
-
-      {/* Dropdown Menu */}
-      <div style={{ marginBottom: 'var(--spacing-2xl)' }}>
-        <DropdownMenu 
-          activeTab={activeTab} 
-          setActiveTab={setActiveTab} 
-          isAdmin={isAdmin}
-        />
       </div>
 
       {activeTab === 'accounts' && (
@@ -245,7 +222,7 @@ function App() {
       )}
 
       {activeTab === 'templates' && (
-        <MessageTemplates />
+        <MessageTemplates accounts={accounts} groups={groups} />
       )}
 
       {activeTab === 'proxies' && (
@@ -275,6 +252,10 @@ function App() {
 
       {activeTab === 'admin' && isAdmin && (
         <AdminDashboard />
+      )}
+
+      {activeTab === 'handbook' && (
+        <Handbook />
       )}
 
       {/* Copyright Footer */}
